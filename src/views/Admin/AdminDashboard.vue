@@ -115,8 +115,8 @@
           </svg>
         </div>
         <div class="stat-body">
-          <span class="stat-label">Pending payments</span>
-          <strong>{{ stats.pendingPayments }}</strong>
+          <span class="stat-label">Payments</span>
+          <strong>{{ payments.length }}</strong>
         </div>
       </div>
       <div

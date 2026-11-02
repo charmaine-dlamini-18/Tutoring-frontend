@@ -60,13 +60,97 @@
                                 </select>
                             </label>
                         </div>
-                        <label>Date &amp; Time
-                        <input v-model="bookingForm.date"
-                        type="datetime-local"
-                        :min="minDateTime"
-                        required
-                        >
-                        </label>
+                        <div class="slot-section">
+                            <div class="booking-calendar">
+                                <div class="calendar-head">
+                                    <button
+                                        type="button"
+                                        class="calendar-nav"
+                                        aria-label="Previous month"
+                                        @click="changeMonth(-1)"
+                                    >
+                                        &lsaquo;
+                                    </button>
+
+                                    <strong>{{ calendarLabel }}</strong>
+
+                                    <button
+                                        type="button"
+                                        class="calendar-nav"
+                                        aria-label="Next month"
+                                        @click="changeMonth(1)"
+                                    >
+                                        &rsaquo;
+                                    </button>
+                                </div>
+
+                                <div class="calendar-weekdays">
+                                    <span v-for="day in weekdays" :key="day">{{ day }}</span>
+                                </div>
+
+                                <div class="calendar-grid">
+                                    <button
+                                        v-for="cell in calendarDays"
+                                        :key="cell.key"
+                                        type="button"
+                                        class="calendar-day"
+                                        :class="{
+                                            muted: !cell.inMonth,
+                                            available: cell.available,
+                                            selected: cell.selected,
+                                            today: cell.today
+                                        }"
+                                        :disabled="!cell.available"
+                                        @click="selectDate(cell)"
+                                    >
+                                        {{ cell.day }}
+                                    </button>
+                                </div>
+
+                                <p v-if="!bookingForm.tutorId" class="slot-hint">
+                                    Select a tutor to see the dates they are available.
+                                </p>
+
+                                <p v-else class="calendar-legend">
+                                    <span class="legend-dot"></span>
+                                    Highlighted dates have open slots
+                                </p>
+                            </div>
+
+                            <div class="slot-picker">
+                                <p class="slot-title">
+                                    Available Time Slots
+                                    <span v-if="selectedDateLabel" class="selected-date-label">
+                                        &middot; {{ selectedDateLabel }}
+                                    </span>
+                                </p>
+
+                                <p v-if="!bookingForm.tutorId || !bookingForm.duration" class="slot-hint">
+                                    Select a tutor and duration to see available times.
+                                </p>
+
+                                <p v-else-if="!bookingForm.date" class="slot-hint">
+                                    Pick an available date to see time slots.
+                                </p>
+
+                                <p v-else-if="!availableSlots.length" class="slot-hint empty">
+                                    No available slots for this date. Try another date or duration.
+                                </p>
+
+                                <div v-else class="slot-grid">
+                                    <button
+                                        v-for="slot in availableSlots"
+                                        :key="slot.start"
+                                        type="button"
+                                        class="slot-chip"
+                                        :class="{ selected: bookingForm.startTime === slot.start }"
+                                        @click="selectSlot(slot)"
+                                    >
+                                        {{ slot.start }} &ndash; {{ slot.end }}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
 
                          <p v-if="availabilityMessage" class="availability-message">
                            {{ availabilityMessage }}
@@ -448,7 +532,9 @@ export default {
             cardNumber: "",
             expiryDate: "",
             cvv: "",
-            bookingForm: { tutorId: '', subjectCode: '', sessionType: '', duration: '', date: '' }
+            calendarYear: new Date().getFullYear(),
+            calendarMonthIndex: new Date().getMonth(),
+            bookingForm: { tutorId: '', subjectCode: '', sessionType: '', duration: '', date: '', startTime: '' }
         }
     },
 
@@ -489,9 +575,79 @@ export default {
             return this.tutors.filter(t => tutorIds.includes(t.tutorId))
         },
 
-        minDateTime() {
-            const d = new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
-            return d.toISOString().slice(0, 16)
+        calendarLabel() {
+            return new Date(this.calendarYear, this.calendarMonthIndex, 1)
+                .toLocaleDateString("en-ZA", {
+                    month: "long",
+                    year: "numeric"
+                })
+        },
+
+        weekdays() {
+            return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        },
+
+        // the 6 week grid for the visible month. Dates are only clickable when
+        // the tutor has availability and, once a duration is picked, at least
+        // one session of that length still fits.
+        calendarDays() {
+            const first = new Date(
+                this.calendarYear,
+                this.calendarMonthIndex,
+                1
+            )
+
+            const gridStart = new Date(
+                this.calendarYear,
+                this.calendarMonthIndex,
+                1 - first.getDay()
+            )
+
+            const todayKey = this.dateKey(new Date())
+            const days = []
+
+            for (let i = 0; i < 42; i++) {
+                const d = new Date(
+                    gridStart.getFullYear(),
+                    gridStart.getMonth(),
+                    gridStart.getDate() + i
+                )
+
+                const key = this.dateKey(d)
+
+                days.push({
+                    key,
+                    day: d.getDate(),
+                    inMonth: d.getMonth() === this.calendarMonthIndex,
+                    today: key === todayKey,
+                    available: this.isDateAvailable(key),
+                    selected: key === this.bookingForm.date
+                })
+            }
+
+            return days
+        },
+
+        selectedDateLabel() {
+            if (!this.bookingForm.date) return ""
+
+            return this.parseDateKey(this.bookingForm.date)
+                .toLocaleDateString("en-ZA", {
+                    weekday: "short",
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric"
+                })
+        },
+
+        // every bookable time on the chosen date, filtered by the tutor's
+        // availability and sessions already on their calendar
+        availableSlots() {
+            const { date, duration } = this.bookingForm
+
+            if (!date || !duration) return []
+
+            return this.buildSlotsForDate(date, Number(duration))
         }
     },
 
@@ -522,13 +678,25 @@ export default {
             this.bookingForm.tutorId = match ? match.tutorId : ''
         },
         'bookingForm.tutorId'() {
+            this.bookingForm.date = ''
+            this.bookingForm.startTime = ''
             this.availabilityMessage = ''
+            this.focusCalendarOnFirstAvailable()
         },
         'bookingForm.date'() {
+            this.bookingForm.startTime = ''
             this.availabilityMessage = ''
         },
         'bookingForm.duration'() {
+            this.bookingForm.startTime = ''
             this.availabilityMessage = ''
+
+            if (
+                this.bookingForm.date &&
+                !this.isDateAvailable(this.bookingForm.date)
+            ) {
+                this.bookingForm.date = ''
+            }
         }
     },
 
@@ -587,100 +755,227 @@ export default {
             return tutor && Array.isArray(tutor.bookings) ? tutor.bookings : []
         },
 
+        dateKey(value) {
+            const year = value.getFullYear()
+            const month = String(value.getMonth() + 1).padStart(2, "0")
+            const day = String(value.getDate()).padStart(2, "0")
+
+            return `${year}-${month}-${day}`
+        },
+
+        // the tutor's working windows for one date. If no availability has
+        // ever been saved in this browser, fall back to a normal working day.
+        getAvailabilityWindows(dateKey) {
+            const { tutorId } = this.bookingForm
+
+            if (!tutorId) return []
+
+            const dayNames = [
+                "Sunday", "Monday", "Tuesday", "Wednesday",
+                "Thursday", "Friday", "Saturday"
+            ]
+
+            const selected = this.parseDateKey(dateKey)
+            const dayName = dayNames[selected.getDay()]
+            const tutorSlots = this.getTutorAvailability(tutorId)
+
+            if (!tutorSlots.length) {
+                return [{ startTime: "08:00", endTime: "18:00" }]
+            }
+
+            return tutorSlots.filter(slot => {
+                if (slot.date) {
+                    return String(slot.date).split("T")[0] === dateKey
+                }
+                return String(slot.day) === dayName
+            })
+        },
+
+        // builds the free start times for a date, removing anything that is in
+        // the past or overlaps a session already booked on the tutor.
+        buildSlotsForDate(dateKey, durationMinutes) {
+            if (!dateKey || !durationMinutes) return []
+
+            const windows = this.getAvailabilityWindows(dateKey)
+            if (!windows.length) return []
+
+            const bookings = this.getTutorBookings(this.bookingForm.tutorId)
+            const step = 30
+            const now = Date.now()
+            const seen = new Set()
+            const slots = []
+
+            for (const window of windows) {
+                const windowStart = this.timeToMinutes(window.startTime)
+                const windowEnd = this.timeToMinutes(window.endTime)
+
+                if (windowStart === null || windowEnd === null) continue
+
+                for (
+                    let start = windowStart;
+                    start + durationMinutes <= windowEnd;
+                    start += step
+                ) {
+                    const startKey = this.minutesToTime(start)
+
+                    if (seen.has(startKey)) continue
+
+                    const startDate = this.parseDateKey(dateKey)
+                    startDate.setHours(
+                        Math.floor(start / 60),
+                        start % 60,
+                        0,
+                        0
+                    )
+
+                    const startMs = startDate.getTime()
+                    if (startMs <= now) continue
+
+                    const endMs = startMs + durationMinutes * 60000
+
+                    const conflict = bookings.some(booking => {
+                        if (!booking.date) return false
+
+                        const bookedStart = new Date(booking.date).getTime()
+                        if (Number.isNaN(bookedStart)) return false
+
+                        const bookedEnd =
+                            bookedStart +
+                            Number(booking.duration || 60) * 60000
+
+                        return startMs < bookedEnd && endMs > bookedStart
+                    })
+
+                    if (conflict) continue
+
+                    seen.add(startKey)
+                    slots.push({
+                        start: startKey,
+                        end: this.minutesToTime(start + durationMinutes)
+                    })
+                }
+            }
+
+            return slots
+        },
+
+        isDateAvailable(dateKey) {
+            const { tutorId, duration } = this.bookingForm
+
+            if (!tutorId) return false
+
+            const selected = this.parseDateKey(dateKey)
+            const today = new Date()
+            today.setHours(0, 0, 0, 0)
+
+            if (selected.getTime() < today.getTime()) return false
+
+            if (!this.getAvailabilityWindows(dateKey).length) return false
+
+            const durationMinutes = Number(duration)
+            if (!durationMinutes) return true
+
+            return this.buildSlotsForDate(dateKey, durationMinutes).length > 0
+        },
+
+        changeMonth(delta) {
+            const next = new Date(
+                this.calendarYear,
+                this.calendarMonthIndex + delta,
+                1
+            )
+
+            this.calendarYear = next.getFullYear()
+            this.calendarMonthIndex = next.getMonth()
+        },
+
+        selectDate(cell) {
+            if (!cell.available) return
+
+            this.bookingForm.date = cell.key
+        },
+
+        // jumps the calendar to the first date the tutor has availability on
+        focusCalendarOnFirstAvailable() {
+            const tutorId = this.bookingForm.tutorId
+            if (!tutorId) return
+
+            const today = new Date()
+            today.setHours(0, 0, 0, 0)
+
+            let earliest = null
+
+            for (const slot of this.getTutorAvailability(tutorId)) {
+                if (!slot.date) continue
+
+                const date = this.parseDateKey(slot.date)
+                if (date.getTime() < today.getTime()) continue
+                if (!earliest || date.getTime() < earliest.getTime()) {
+                    earliest = date
+                }
+            }
+
+            const target = earliest || new Date()
+
+            this.calendarYear = target.getFullYear()
+            this.calendarMonthIndex = target.getMonth()
+        },
+
+        parseDateKey(value) {
+            const [year, month, day] = String(value).split("-").map(Number)
+            return new Date(year, month - 1, day)
+        },
+
+        timeToMinutes(value) {
+            const [hours, minutes] = String(value || "").split(":").map(Number)
+
+            if (Number.isNaN(hours) || Number.isNaN(minutes)) return null
+
+            return hours * 60 + minutes
+        },
+
+        minutesToTime(totalMinutes) {
+            const hours = Math.floor(totalMinutes / 60)
+            const minutes = totalMinutes % 60
+
+            return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`
+        },
+
+        selectSlot(slot) {
+            this.bookingForm.startTime = slot.start
+            this.availabilityMessage = ""
+        },
+
         checkTutorAvailability() {
             this.availabilityMessage = ""
 
-            const { tutorId, date, duration } = this.bookingForm
+            const { tutorId, date, duration, startTime } = this.bookingForm
 
             if (!tutorId || !date || !duration) {
                 this.availabilityMessage = "Please select a tutor, date and duration."
                 return false
             }
 
-            const selectedDate = new Date(date)
-
-            if (Number.isNaN(selectedDate.getTime())) {
-                this.availabilityMessage = "Please select a valid date and time."
+            if (Number.isNaN(this.parseDateKey(date).getTime())) {
+                this.availabilityMessage = "Please select a valid date."
                 return false
             }
 
-            const durationMinutes = Number(duration)
-            const selectedStart = selectedDate.getTime()
-            const selectedEnd = selectedStart + durationMinutes * 60000
-
-            // never allow two sessions to overlap on the tutor's calendar
-            const conflict = this.getTutorBookings(tutorId).find(booking => {
-                if (!booking.date) return false
-
-                const bookedStart = new Date(booking.date).getTime()
-
-                if (Number.isNaN(bookedStart)) return false
-
-                const bookedEnd =
-                    bookedStart + Number(booking.duration || 60) * 60000
-
-                return selectedStart < bookedEnd && selectedEnd > bookedStart
-            })
-
-            if (conflict) {
-                this.availabilityMessage =
-                    `This tutor already has a session on ` +
-                    `${this.formatDate(conflict.date)}. Please choose another time.`
+            if (!startTime) {
+                this.availabilityMessage = "Please select an available time slot."
                 return false
             }
 
-            const slots = this.getTutorAvailability(tutorId)
+            // The available slots already account for the tutor's working
+            // hours and sessions that are booked. If the chosen time is not
+            // in that list it has just been taken or is outside availability.
+            const slot = this.availableSlots.find(
+                item => item.start === startTime
+            )
 
-            // Availability is saved in the tutor's browser. If this browser
-            // has no slots for the tutor, don't block the student from booking.
-            if (!slots.length) return true
-
-            const days = [
-                "Sunday", "Monday", "Tuesday", "Wednesday",
-                "Thursday", "Friday", "Saturday"
-            ]
-
-            const selectedDay = days[selectedDate.getDay()]
-            const selectedDateKey = String(date).split("T")[0]
-            const selectedStartMinutes =
-                selectedDate.getHours() * 60 + selectedDate.getMinutes()
-            const selectedEndMinutes = selectedStartMinutes + durationMinutes
-
-            const matchingSlot = slots.find(slot => {
-                // date-specific availability
-                if (slot.date) {
-                    if (String(slot.date).split("T")[0] !== selectedDateKey) return false
-                } else if (slot.day !== selectedDay) {
-                    // older weekly availability
-                    return false
-                }
-
-                const [startHour, startMinute] = String(slot.startTime || "").split(":").map(Number)
-                const [endHour, endMinute] = String(slot.endTime || "").split(":").map(Number)
-
-                if ([startHour, startMinute, endHour, endMinute].some(n => Number.isNaN(n))) {
-                    return false
-                }
-
-                const slotStart = startHour * 60 + startMinute
-                const slotEnd = endHour * 60 + endMinute
-
-                return selectedStartMinutes >= slotStart && selectedEndMinutes <= slotEnd
-            })
-
-            if (!matchingSlot) {
-                const when = selectedDate.toLocaleString("en-ZA", {
-                    year: "numeric",
-                    month: "short",
-                    day: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit"
-                })
-
+            if (!slot) {
                 this.availabilityMessage =
-                    `This tutor is not available for a ${duration}-minute session ` +
-                    `on ${when}. Please choose another time.`
-
+                    "That time is no longer available. Please choose another slot."
                 return false
             }
 
@@ -692,7 +987,13 @@ export default {
             if (!this.checkTutorAvailability()) {
                 return;
             }
-            if (new Date(this.bookingForm.date).getTime() <= Date.now()) {
+
+            const { date, startTime } = this.bookingForm
+            const start = this.parseDateKey(date)
+            const [hours, minutes] = startTime.split(":").map(Number)
+            start.setHours(hours, minutes, 0, 0)
+
+            if (start.getTime() <= Date.now()) {
                 this.notify('error', 'Please choose a future date and time.')
                 return
             }
@@ -705,12 +1006,12 @@ export default {
                     subjectCode: this.bookingForm.subjectCode,
                     sessionType: this.bookingForm.sessionType,
                     duration: String(this.bookingForm.duration),
-                    date: `${this.bookingForm.date}:00`,
+                    date: `${date}T${startTime}:00`,
                     student: { studentNumber: this.session.id },
                     tutor: { tutorId: this.bookingForm.tutorId }
                 })
 
-                this.bookingForm = { tutorId: '', subjectCode: '', sessionType: '', duration: '', date: '' }
+                this.bookingForm = { tutorId: '', subjectCode: '', sessionType: '', duration: '', date: '', startTime: '' }
                 this.$emit("refresh")
                 this.notify('success', 'Booking confirmed! Please complete your payment.')
                 this.$emit("open-payment", {
@@ -1438,6 +1739,176 @@ select:focus {
 .pop-enter .modal {
   transform: scale(0.92) translateY(10px);
 }
+.slot-section {
+  margin-bottom: 18px;
+}
+
+.booking-calendar {
+  background: #ffffff;
+  border: 1px solid #e3e9f2;
+  border-radius: 9px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+
+.calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.calendar-head strong {
+  font-size: 14px;
+  color: #22354d;
+}
+
+.calendar-nav {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #c5cfdc;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #2c3e50;
+  font-family: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.calendar-nav:hover {
+  border-color: #f28c28;
+  color: #b35c10;
+}
+
+.calendar-weekdays,
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.calendar-weekdays span {
+  text-align: center;
+  padding: 4px 0;
+  color: #8a94a3;
+  font-size: 10px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.calendar-day {
+  min-height: 36px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: #f3f5f8;
+  color: #b7c0cc;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: not-allowed;
+}
+
+.calendar-day.muted {
+  opacity: 0.4;
+}
+
+.calendar-day.available {
+  background: #eaf6f0;
+  border-color: #c8e9d8;
+  color: #1e7d54;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.calendar-day.available:hover {
+  border-color: #42b983;
+}
+
+.calendar-day.selected {
+  background: #2c3e50;
+  border-color: #2c3e50;
+  color: #ffffff;
+}
+
+.calendar-day.today {
+  box-shadow: inset 0 0 0 1px #f28c28;
+}
+
+.calendar-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 0;
+  color: #8a94a3;
+  font-size: 11px;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #42b983;
+}
+
+.slot-picker {
+  background: #f8fafc;
+  border: 1px solid #e3e9f2;
+  border-radius: 9px;
+  padding: 14px 16px;
+}
+
+.selected-date-label {
+  color: #b35c10;
+  font-weight: 600;
+}
+
+.slot-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: bold;
+  color: #55657a;
+}
+
+.slot-hint {
+  margin: 0;
+  font-size: 13px;
+  color: #8a94a3;
+}
+
+.slot-hint.empty {
+  color: #b35c10;
+}
+
+.slot-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.slot-chip {
+  background: #ffffff;
+  color: #2c3e50;
+  border: 1px solid #c5cfdc;
+  border-radius: 7px;
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.slot-chip:hover {
+  border-color: #f28c28;
+  color: #b35c10;
+}
+
+.slot-chip.selected {
+  background: #2c3e50;
+  border-color: #2c3e50;
+  color: #ffffff;
+}
+
 .availability-message {
     color: #c0392b;
     font-size: 13px;

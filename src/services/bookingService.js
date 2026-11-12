@@ -1,54 +1,37 @@
+import { request } from './http'
+
 const BASE_URL = '/tutoring/booking'
 
-function handleErrors(response) {
-  if (!response.ok) {
-    throw new Error(`Booking request failed: ${response.status} ${response.statusText}`)
-  }
-  return response
+export function getAllBookings() {
+  return request(`${BASE_URL}/getAll`, { label: 'Booking' })
 }
 
-async function parseJson(response) {
-  const text = await response.text()
-  if (!text) return null
-  try {
-    return JSON.parse(text)
-  } catch (e) {
-    throw new Error('Invalid response from server')
-  }
+export function getBookingById(bookingId) {
+  return request(`${BASE_URL}/read/${encodeURIComponent(bookingId)}`, { label: 'Booking' })
 }
 
-export async function getAllBookings() {
-  const response = await fetch(`${BASE_URL}/getAll`)
-  return parseJson(await handleErrors(response))
-}
-
-export async function getBookingById(bookingId) {
-  const response = await fetch(`${BASE_URL}/read/${encodeURIComponent(bookingId)}`)
-  return parseJson(await handleErrors(response))
-}
-
-export async function createBooking(booking) {
-  const response = await fetch(`${BASE_URL}/create`, {
+export function createBooking(booking, tutorId) {
+  const query = tutorId ? `?tutorId=${encodeURIComponent(tutorId)}` : ''
+  return request(`${BASE_URL}/create${query}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(booking)
+    body: JSON.stringify(booking),
+    label: 'Booking'
   })
-  return parseJson(await handleErrors(response))
 }
 
-export async function updateBooking(booking) {
-  const response = await fetch(`${BASE_URL}/update`, {
+export function updateBooking(booking) {
+  return request(`${BASE_URL}/update`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(booking)
+    body: JSON.stringify(booking),
+    label: 'Booking'
   })
-  return parseJson(await handleErrors(response))
 }
 
-export async function deleteBooking(bookingId) {
-  const response = await fetch(`${BASE_URL}/delete/${encodeURIComponent(bookingId)}`, {
-    method: 'DELETE'
-  })
-  handleErrors(response)
-  return true
+export function deleteBooking(bookingId) {
+  return request(`${BASE_URL}/delete/${encodeURIComponent(bookingId)}`, {
+    method: 'DELETE',
+    label: 'Booking'
+  }).then(() => true)
 }

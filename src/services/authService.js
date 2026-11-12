@@ -1,5 +1,4 @@
-import { getAllStudents, getStudentById, updateStudent } from './studentService'
-import { getAllTutors, getTutorById, updateTutor } from './tutorService'
+import { request, saveCredentials, clearCredentials, verifyCredentials } from './http'
 
 const SESSION_KEY = 'tutoring_session'
 
@@ -28,68 +27,73 @@ export function isLoggedIn() {
 
 export function logout() {
   localStorage.removeItem(SESSION_KEY)
+  clearCredentials()
 }
 
-export async function loginStudent(email, password) {
-  const students = await getAllStudents()
-  const student = students.find(s => s.email === email && s.password === password)
-  if (!student) {
-    throw new Error('Invalid email or password')
+function roleLabel(role) {
+  if (!role) return 'different'
+  return role.charAt(0).toUpperCase() + role.slice(1)
+}
+
+async function login(email, password, expectedRole) {
+  const me = await verifyCredentials(email, password)
+  const role = String(me.role || '').toLowerCase()
+
+  if (expectedRole && role !== expectedRole) {
+    throw new Error(
+      `This email belongs to a ${roleLabel(role)} account, so you cannot sign in as a ${roleLabel(expectedRole)}. ` +
+      `Please switch to the ${roleLabel(role)} tab.`
+    )
   }
+
+  saveCredentials(email, password)
   const session = {
-    role: 'student',
-    id: student.studentNumber,
-    name: `${student.firstName} ${student.lastName}`,
-    email: student.email
+    role,
+    id: me.id,
+    name: me.name,
+    email: me.email
   }
   saveSession(session)
   return session
 }
 
-export async function loginTutor(email, password) {
-  const tutors = await getAllTutors()
-  const tutor = tutors.find(t => t.email === email && t.password === password)
-  if (!tutor) {
-    throw new Error('Invalid email or password')
-  }
-  const session = {
-    role: 'tutor',
-    id: tutor.tutorId,
-    name: `${tutor.firstName} ${tutor.lastName}`,
-    email: tutor.email
-  }
-  saveSession(session)
-  return session
+export function loginStudent(email, password) {
+  return login(email, password, 'student')
 }
 
-export async function resetPassword(email, newPassword) {
-  const students = await getAllStudents()
-  const student = students.find(s => s.email === email)
-  if (student) {
-    await updateStudent({ ...student, password: newPassword })
-    return 'student'
+export function loginTutor(email, password) {
+  return login(email, password, 'tutor')
+}
+
+export function loginAdmin(email, password) {
+  return login(email, password, 'admin')
+}
+
+function refreshCredentials(newPassword) {
+  const session = getSession()
+  if (session && session.email) {
+    saveCredentials(session.email, newPassword)
   }
-  const tutors = await getAllTutors()
-  const tutor = tutors.find(t => t.email === email)
-  if (tutor) {
-    await updateTutor({ ...tutor, password: newPassword })
-    return 'tutor'
-  }
-  throw new Error('No account found with that email')
+}
+
+export async function resetPassword() {
+  throw new Error('Password reset is not available. Please contact an administrator.')
 }
 
 export async function changeStudentPassword(studentNumber, currentPassword, newPassword) {
-  const student = await getStudentById(studentNumber)
-  if (student.password !== currentPassword) {
-    throw new Error('Current password is incorrect')
-  }
-  await updateStudent({ ...student, password: newPassword })
+  await request('/tutoring/student/change-password', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ currentPassword, newPassword })
+  })
+  refreshCredentials(newPassword)
 }
 
 export async function changeTutorPassword(tutorId, currentPassword, newPassword) {
-  const tutor = await getTutorById(tutorId)
-  if (tutor.password !== currentPassword) {
-    throw new Error('Current password is incorrect')
-  }
-  await updateTutor({ ...tutor, password: newPassword })
+  await request('/tutoring/tutor/change-password', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ currentPassword, newPassword })
+  })
+  refreshCredentials(newPassword)
 }

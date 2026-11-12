@@ -1,63 +1,38 @@
+import { request } from './http'
+
 const BASE_URL = '/tutoring/payment'
 
-function handleErrors(response) {
-  if (!response.ok) {
-    throw new Error(`Payment request failed: ${response.status} ${response.statusText}`)
-  }
-  return response
+export function getAllPayments() {
+  return request(`${BASE_URL}/getAll`, { label: 'Payment' })
 }
 
-async function parseJson(response) {
-  const text = await response.text()
-  if (!text) return null
-  try {
-    return JSON.parse(text)
-  } catch (e) {
-    throw new Error('Invalid response from server')
-  }
+export function getPaymentById(paymentRef) {
+  return request(`${BASE_URL}/read/${encodeURIComponent(paymentRef)}`, { label: 'Payment' })
 }
 
-export async function getAllPayments() {
-  try {
-    const response = await fetch(`${BASE_URL}/getAll`, { credentials: 'include' })
-    return parseJson(await handleErrors(response))
-  } catch (e) {
-    try {
-      const response = await fetch(`${BASE_URL}/all`)
-      return parseJson(await handleErrors(response))
-    } catch (err) {
-      throw e
-    }
-  }
-}
-
-export async function getPaymentById(paymentRef) {
-  const response = await fetch(`${BASE_URL}/read/${encodeURIComponent(paymentRef)}`)
-  return parseJson(await handleErrors(response))
-}
-
-export async function createPayment(payment) {
-  const response = await fetch(`${BASE_URL}/create`, {
+export function createPayment(payment, bookingId) {
+  const id = bookingId || (payment.booking && payment.booking.bookingId)
+  const query = id ? `?bookingId=${encodeURIComponent(id)}` : ''
+  return request(`${BASE_URL}/create${query}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payment)
+    body: JSON.stringify(payment),
+    label: 'Payment'
   })
-  return parseJson(await handleErrors(response))
 }
 
-export async function updatePayment(payment) {
-  const response = await fetch(`${BASE_URL}/update`, {
+export function updatePayment(payment) {
+  return request(`${BASE_URL}/update`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payment)
+    body: JSON.stringify(payment),
+    label: 'Payment'
   })
-  return parseJson(await handleErrors(response))
 }
 
-export async function deletePayment(paymentRef) {
-  const response = await fetch(`${BASE_URL}/delete/${encodeURIComponent(paymentRef)}`, {
-    method: 'DELETE'
-  })
-  handleErrors(response)
-  return true
+export function deletePayment(paymentRef) {
+  return request(`${BASE_URL}/delete/${encodeURIComponent(paymentRef)}`, {
+    method: 'DELETE',
+    label: 'Payment'
+  }).then(() => true)
 }

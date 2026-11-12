@@ -1,54 +1,36 @@
+import { request } from './http'
+
 const BASE_URL = '/tutoring/student'
 
-function handleErrors(response) {
-  if (!response.ok) {
-    throw new Error(`Student request failed: ${response.status} ${response.statusText}`)
-  }
-  return response
+export function getAllStudents() {
+  return request(`${BASE_URL}/getAll`, { label: 'Student' })
 }
 
-async function parseJson(response) {
-  const text = await response.text()
-  if (!text) return null
-  try {
-    return JSON.parse(text)
-  } catch (e) {
-    throw new Error('Invalid response from server')
-  }
+export function getStudentById(studentNumber) {
+  return request(`${BASE_URL}/read/${encodeURIComponent(studentNumber)}`, { label: 'Student' })
 }
 
-export async function getAllStudents() {
-  const response = await fetch(`${BASE_URL}/getAll`)
-  return parseJson(await handleErrors(response))
-}
-
-export async function getStudentById(studentNumber) {
-  const response = await fetch(`${BASE_URL}/read/${encodeURIComponent(studentNumber)}`)
-  return parseJson(await handleErrors(response))
-}
-
-export async function createStudent(student) {
-  const response = await fetch(`${BASE_URL}/create`, {
+export function createStudent(student) {
+  return request(`${BASE_URL}/create`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(student)
+    body: JSON.stringify(student),
+    label: 'Register'
   })
-  return parseJson(await handleErrors(response))
 }
 
-export async function updateStudent(student) {
-  const response = await fetch(`${BASE_URL}/update`, {
+export function updateStudent(student) {
+  return request(`${BASE_URL}/update`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(student)
+    body: JSON.stringify(student),
+    label: 'Student'
   })
-  return parseJson(await handleErrors(response))
 }
 
-export async function deleteStudent(studentNumber) {
-  const response = await fetch(`${BASE_URL}/delete/${encodeURIComponent(studentNumber)}`, {
-    method: 'DELETE'
-  })
-  handleErrors(response)
-  return true
+export function deleteStudent(studentNumber) {
+  return request(`${BASE_URL}/delete/${encodeURIComponent(studentNumber)}`, {
+    method: 'DELETE',
+    label: 'Student'
+  }).then(() => true)
 }

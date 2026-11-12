@@ -1,4 +1,5 @@
 import { getSession, saveSession } from '@/services/authService'
+import { request } from '@/services/http'
 import { getAllStudents, deleteStudent } from '@/services/studentService'
 import { getAllTutors, deleteTutor } from '@/services/tutorService'
 import { getAllSubjects, createSubject, updateSubject, deleteSubject } from '@/services/subjectService'
@@ -84,30 +85,19 @@ function isPaidBooking(booking, paidIds) {
   return status === 'PAID' || paidIds.has(String(booking.bookingId))
 }
 
-function handleErrors(response) {
-  if (!response.ok) {
-    throw new Error(`Admin request failed: ${response.status} ${response.statusText}`)
-  }
-  return response
-}
+// Money that is really coming in: completed payments, plus card/online payments
+// that are still marked pending. Cash and EFT stay out until they are confirmed.
+function countsTowardsRevenue(payment) {
+  const status = String(payment.status || '').trim().toUpperCase()
+  const method = String(payment.paymentMethod || '').trim().toUpperCase()
 
-async function parseJson(response) {
-  const text = await response.text()
-  if (!text) return null
-  try {
-    return JSON.parse(text)
-  } catch (e) {
-    throw new Error('Invalid response from server')
+  if (['CANCELLED', 'CANCELED', 'FAILED', 'DECLINED', 'REFUNDED'].includes(status)) {
+    return false
   }
-}
-
-export async function adminLogin(adminId, password) {
-  const admins = await getAllAdmins()
-  const admin = admins.find(a => String(a.adminId) === String(adminId) && a.password === password)
-  if (!admin) {
-    throw new Error('Invalid admin ID or password')
+  if (status === 'PAID' || status.includes('COMPLETE')) {
+    return true
   }
-  return admin
+  return !['CASH', 'EFT', 'BANK TRANSFER', 'BANK_TRANSFER'].includes(method)
 }
 
 export function getAdminSession() {
@@ -138,7 +128,7 @@ export async function getDashboard() {
     totalBookings: bookingList.length,
     pendingPayments: paymentList.filter(p => String(p.status).toUpperCase().includes('PEND')).length,
     totalRevenue: paymentList
-      .filter(p => String(p.status).toUpperCase() === 'PAID')
+      .filter(countsTowardsRevenue)
       .reduce((sum, p) => sum + Number(p.amount || 0), 0)
   }
 
@@ -156,8 +146,7 @@ export async function getDashboard() {
 
   let tutorSubjectRecords = []
   try {
-    const tsRes = await fetch('/tutoring/tutorsubject/getAll')
-    if (tsRes.ok) tutorSubjectRecords = await tsRes.json()
+    tutorSubjectRecords = (await request('/tutoring/tutorsubject/getAll', { label: 'Tutor subject' })) || []
   } catch (e) { /* ignore */ }
 
   for (const ts of tutorSubjectRecords) {
@@ -213,40 +202,37 @@ export async function getBookingsWithPeople() {
     .filter(b => isPaidBooking(b, paidIds))
 }
 
-export async function getAllAdmins() {
-  const response = await fetch(`${BASE_URL}/getAll`)
-  return parseJson(await handleErrors(response))
+export function getAllAdmins() {
+  return request(`${BASE_URL}/getAll`, { label: 'Admin' })
 }
 
-export async function getAdminById(adminId) {
-  const response = await fetch(`${BASE_URL}/read/${encodeURIComponent(adminId)}`)
-  return parseJson(await handleErrors(response))
+export function getAdminById(adminId) {
+  return request(`${BASE_URL}/read/${encodeURIComponent(adminId)}`, { label: 'Admin' })
 }
 
-export async function createAdmin(admin) {
-  const response = await fetch(`${BASE_URL}/create`, {
+export function createAdmin(admin) {
+  return request(`${BASE_URL}/create`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(admin)
+    body: JSON.stringify(admin),
+    label: 'Admin'
   })
-  return parseJson(await handleErrors(response))
 }
 
-export async function updateAdmin(admin) {
-  const response = await fetch(`${BASE_URL}/update`, {
+export function updateAdmin(admin) {
+  return request(`${BASE_URL}/update`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(admin)
+    body: JSON.stringify(admin),
+    label: 'Admin'
   })
-  return parseJson(await handleErrors(response))
 }
 
-export async function deleteAdmin(adminId) {
-  const response = await fetch(`${BASE_URL}/delete/${encodeURIComponent(adminId)}`, {
-    method: 'DELETE'
-  })
-  handleErrors(response)
-  return true
+export function deleteAdmin(adminId) {
+  return request(`${BASE_URL}/delete/${encodeURIComponent(adminId)}`, {
+    method: 'DELETE',
+    label: 'Admin'
+  }).then(() => true)
 }
 
 export { getAllStudents as getStudents, deleteStudent, getAllTutors as getTutors, deleteTutor, getAllSubjects as getSubjects, createSubject, updateSubject, deleteSubject, getAllBookings as getBookings, updateBooking, deleteBooking, getAllPayments as getPayments, saveSession }

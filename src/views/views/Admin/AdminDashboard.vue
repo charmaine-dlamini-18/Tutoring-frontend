@@ -810,8 +810,8 @@ button.danger.small {
 
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 14px;
   margin: 20px 0 26px;
 }
 
@@ -875,6 +875,7 @@ button.danger.small {
 
 .stat-body {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
@@ -883,10 +884,12 @@ button.danger.small {
 .stat-label {
   font-size: 10px;
   font-weight: 600;
+  line-height: 1.3;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   color: #7f8c8d;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .stat strong {

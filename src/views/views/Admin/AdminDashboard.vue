@@ -408,6 +408,7 @@ import {
   deleteTutor
 } from '@/services/adminService'
 import { updateTutor } from '@/services/tutorService'
+import { saveCancelledBooking } from '@/services/cancelledBookingService'
 
 export default {
   name: 'AdminDashboard',
@@ -565,7 +566,52 @@ export default {
     async removeBooking(bookingId) {
       if (!window.confirm(`Delete booking ${bookingId}?`)) return
       try {
+        const booking = this.bookings.find(b => String(b.bookingId) === String(bookingId))
         await deleteBooking(bookingId)
+        if (booking) {
+          saveCancelledBooking({
+            bookingId: booking.bookingId,
+            tutorId: booking.tutorId,
+            studentNumber: booking.studentNumber,
+            studentName: booking.studentName,
+            subjectCode: booking.subjectCode,
+            date: booking.date,
+            duration: booking.duration,
+            sessionType: booking.sessionType,
+            status: 'CANCELLED',
+            cancelledBy: 'admin',
+            cancelledAt: new Date().toISOString()
+          })
+
+          try {
+            const stored = JSON.parse(
+              localStorage.getItem('tutorCancelledSessions') || '[]'
+            )
+            const tutorCancelled = Array.isArray(stored) ? stored : []
+            const already = tutorCancelled.some(
+              b => String(b.bookingId) === String(booking.bookingId)
+            )
+            if (!already) {
+              tutorCancelled.push({
+                bookingId: booking.bookingId,
+                studentNumber: booking.studentNumber,
+                studentName: booking.studentName,
+                subjectCode: booking.subjectCode,
+                date: booking.date,
+                duration: booking.duration,
+                sessionType: booking.sessionType,
+                cancelledAt: new Date().toISOString()
+              })
+              localStorage.setItem(
+                'tutorCancelledSessions',
+                JSON.stringify(tutorCancelled)
+              )
+            }
+          } catch (error) {
+            console.error('Failed to record cancelled session for tutor:', error)
+          }
+          window.dispatchEvent(new Event('tutor-cancellations-updated'))
+        }
         this.loadAll()
       } catch (e) {
         this.error = e.message || 'Could not delete booking'

@@ -1,5 +1,6 @@
 import { request } from './http'
 import { getAllStudents } from './studentService'
+import { getAllBookings } from './bookingService'
 
 const BASE_URL = '/tutoring/tutor'
 
@@ -37,31 +38,40 @@ export function deleteTutor(tutorId) {
 }
 
 export async function getTutorSessions(tutorId) {
-  const [tutor, students] = await Promise.all([
-    getTutorById(tutorId),
+  const [allBookings, students] = await Promise.all([
+    getAllBookings().catch(() => []),
     getAllStudents().catch(() => [])
   ])
 
-  const bookings = (tutor && tutor.bookings) || []
   const studentList = students || []
 
-  const studentByBooking = new Map()
+  const studentByNumber = new Map()
   for (const s of studentList) {
-    for (const b of s.bookings || []) {
-      if (!b || !b.bookingId) continue
-      studentByBooking.set(b.bookingId, {
-        studentNumber: s.studentNumber,
-        studentName: `${s.firstName || ''} ${s.lastName || ''}`.trim() || `Student ${s.studentNumber}`
-      })
-    }
+    if (!s || !s.studentNumber) continue
+    studentByNumber.set(String(s.studentNumber), {
+      studentNumber: s.studentNumber,
+      studentName: `${s.firstName || ''} ${s.lastName || ''}`.trim() || `Student ${s.studentNumber}`
+    })
   }
 
+  const bookings = (Array.isArray(allBookings) ? allBookings : [])
+    .filter(b => b && String(b.tutorId) === String(tutorId))
+
   return bookings.map((b) => {
-    const student = studentByBooking.get(b.bookingId)
+    const byNumber = studentByNumber.get(String(b.studentNumber))
+    const student = byNumber || (b.student || {})
     return {
       ...b,
-      studentNumber: b.studentNumber || (student ? student.studentNumber : ''),
-      studentName: b.studentName || (student ? student.studentName : '')
+      studentNumber:
+        b.studentNumber ||
+        (b.student && b.student.studentNumber) ||
+        (student && student.studentNumber) ||
+        '',
+      studentName:
+        b.studentName ||
+        (b.student && b.student.studentName) ||
+        (student && student.studentName) ||
+        ''
     }
   })
 }

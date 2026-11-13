@@ -96,7 +96,7 @@
 
 <script>
 import { getSession } from "@/services/authService";
-import { getTutorById } from "@/services/tutorService";
+import { getAllBookings } from "@/services/bookingService";
 import { request } from "@/services/http";
 
 const CANCELLED_STORAGE_KEY = "tutorCancelledSessions";
@@ -172,17 +172,15 @@ export default {
     },
 
     getStudentNumber(session) {
-      const matchingStudent = this.students.find(student =>
-        Array.isArray(student.bookings) &&
-        student.bookings.some(
-          booking =>
-            String(booking.bookingId) === String(session.bookingId)
-        )
-      );
+      if (session.studentNumber) return session.studentNumber;
 
-      return matchingStudent
-        ? matchingStudent.studentNumber
-        : session.studentNumber || "Student not found";
+      const byBooking = this.students.find(student =>
+        Array.isArray(student.bookings) &&
+        student.bookings.some(b => b && String(b.bookingId) === String(session.bookingId))
+      );
+      if (byBooking && byBooking.studentNumber) return byBooking.studentNumber;
+
+      return "Student not found";
     },
 
     async loadTodaysSessions() {
@@ -195,16 +193,27 @@ export default {
           return;
         }
 
-        const [tutor, students] = await Promise.all([
-          getTutorById(session.id),
+        const [allBookings, students] = await Promise.all([
+          getAllBookings().catch(() => []),
           request("/tutoring/student/getAll", { label: "Student" }).catch(() => [])
         ]);
 
         this.students = Array.isArray(students) ? students : [];
 
-        if (!tutor || !Array.isArray(tutor.bookings)) {
-          throw new Error("The tutor's bookings were not returned");
+        const studentNumberByBookingId = new Map();
+        const studentByNumber = new Map();
+        for (const student of this.students) {
+          if (student && student.studentNumber) {
+            studentByNumber.set(String(student.studentNumber), student);
+          }
+          for (const b of student.bookings || []) {
+            if (b && b.bookingId) {
+              studentNumberByBookingId.set(String(b.bookingId), student.studentNumber);
+            }
+          }
         }
+
+        const tutorId = session.tutorId || session.id;
 
         const cancelledSessions = this.getStoredArray(
           CANCELLED_STORAGE_KEY
@@ -223,25 +232,38 @@ export default {
 
         const now = new Date();
 
-        this.todaysSessions = tutor.bookings.filter(booking => {
-          if (
-            excludedIds.has(String(booking.bookingId)) ||
-            !booking.payment ||
-            String(booking.payment.status).trim().toUpperCase() !== "PAID" ||
-            !booking.date
-          ) {
-            return false;
-          }
+        const bookings = (Array.isArray(allBookings) ? allBookings : [])
+          .filter(b => b && String(b.tutorId) === String(tutorId));
 
-          const date = new Date(booking.date);
+        this.todaysSessions = bookings
+          .filter(booking => {
+            if (
+              excludedIds.has(String(booking.bookingId)) ||
+              !booking.payment ||
+              String(booking.payment.status).trim().toUpperCase() !== "PAID" ||
+              !booking.date
+            ) {
+              return false;
+            }
 
-          return (
-            !Number.isNaN(date.getTime()) &&
-            date.getFullYear() === now.getFullYear() &&
-            date.getMonth() === now.getMonth() &&
-            date.getDate() === now.getDate()
-          );
-        });
+            const date = new Date(booking.date);
+
+            return (
+              !Number.isNaN(date.getTime()) &&
+              date.getFullYear() === now.getFullYear() &&
+              date.getMonth() === now.getMonth() &&
+              date.getDate() === now.getDate()
+            );
+          })
+          .map(booking => ({
+            ...booking,
+            studentNumber:
+              booking.studentNumber ||
+              (booking.student && booking.student.studentNumber) ||
+              studentNumberByBookingId.get(String(booking.bookingId)) ||
+              (studentByNumber.get(String(booking.studentNumber)) && studentByNumber.get(String(booking.studentNumber)).studentNumber) ||
+              ""
+          }));
       } catch (error) {
         console.error("Failed to load today's sessions:", error);
         this.todaysSessions = [];

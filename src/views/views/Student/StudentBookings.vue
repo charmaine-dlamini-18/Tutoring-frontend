@@ -322,6 +322,32 @@
 
                     </div>
 
+                    <div v-if="cancelledBookings.length" class="table-scroll">
+                        <div class="table-header booking-columns">
+                            <span>When</span>
+                            <span>Subject</span>
+                            <span>Tutor</span>
+                            <span>Type</span>
+                            <span>Duration</span>
+                            <span>Status</span>
+                            <span></span>
+                        </div>
+
+                        <div
+                            v-for="b in cancelledBookings"
+                            :key="b.bookingId"
+                            class="table-row booking-columns row-dim"
+                        >
+                            <span class="cell-strong">{{ formatDate(b.cancelledAt || b.date) }}</span>
+                            <span>{{ subjectName(b.subjectCode) }}</span>
+                            <span>{{ tutorName(b) }}</span>
+                            <span>{{ b.sessionType }}</span>
+                            <span>{{ b.duration }} min</span>
+                            <span class="status-chip cancelled">Cancelled</span>
+                            <span class="row-actions"></span>
+                        </div>
+                    </div>
+
                 </div>
 
             </template>
@@ -491,6 +517,7 @@
 import { getSession } from '@/services/authService'
 import { createBooking, deleteBooking } from '@/services/bookingService'
 import { createPayment } from '@/services/paymentService'
+import { getCancelledBookingsForStudent } from '@/services/cancelledBookingService'
 
 const STANDARD_START = "08:30"
 const STANDARD_END = "18:00"
@@ -546,6 +573,7 @@ export default {
             calendarYear: new Date().getFullYear(),
             calendarMonthIndex: new Date().getMonth(),
             availabilityVersion: 0,
+            cancelledVersion: 0,
             bookingForm: { tutorId: '', subjectCode: '', sessionType: '', duration: '', date: '', startTime: '' }
         }
     },
@@ -569,6 +597,19 @@ export default {
             return this.myBookings
                 .filter(b => new Date(b.date).getTime() < now)
                 .sort((a, b) => new Date(b.date) - new Date(a.date))
+        },
+
+        // cancelled bookings for this student (deleted by tutor or admin),
+        // shown in history with a "Cancelled" status
+        cancelledBookings() {
+            void this.cancelledVersion
+            const studentNumber = this.me.studentNumber || this.session?.id || ''
+            return getCancelledBookingsForStudent(studentNumber)
+                .sort((a, b) => {
+                    const da = a.cancelledAt ? new Date(a.cancelledAt).getTime() : 0
+                    const db = b.cancelledAt ? new Date(b.cancelledAt).getTime() : 0
+                    return db - da
+                })
         },
 
         // live price based on the tutors rate and the minutes picked
@@ -715,15 +756,32 @@ export default {
 
     mounted() {
         window.addEventListener('tutor-availability-updated', this.refreshAvailability)
+        window.addEventListener('storage', this.handleStorageChange)
+        window.addEventListener('cancelled-bookings-updated', this.refreshCancelled)
     },
 
     beforeDestroy() {
         window.removeEventListener('tutor-availability-updated', this.refreshAvailability)
+        window.removeEventListener('storage', this.handleStorageChange)
+        window.removeEventListener('cancelled-bookings-updated', this.refreshCancelled)
     },
 
     methods: {
         refreshAvailability() {
             this.availabilityVersion += 1
+        },
+
+        refreshCancelled() {
+            this.cancelledVersion += 1
+        },
+
+        handleStorageChange(event) {
+            if (
+                event.key &&
+                event.key.startsWith('tutorUnavailableDates_')
+            ) {
+                this.refreshAvailability()
+            }
         },
 
         changePage(page) {
@@ -772,23 +830,47 @@ export default {
             })
         },
 
+        // reads the tutor's explicitly marked unavailable dates from the tutor
+        // record fetched from the backend, so a date a tutor marks unavailable
+        // is greyed out for every student (not just the browser that saved it).
+        // also checks localStorage as a same-browser fallback. touches
+        // availabilityVersion so Vue tracks it as a dependency of calendarDays
+        // and recomputes when availability changes.
         getTutorAvailability(tutorId) {
-            if (!tutorId) return []
+          if (!tutorId) return []
 
-            // reads the availability version so Vue recomputes when a tutor
-            // marks a day unavailable while this page is open
-            if (this.availabilityVersion < 0) return []
+          void this.availabilityVersion
 
-            try {
-                const saved = JSON.parse(
-                    localStorage.getItem(`tutorUnavailableDates_${tutorId}`) || "[]"
-                )
-                return Array.isArray(saved)
-                    ? saved.filter(entry => entry && entry.date)
-                    : []
-            } catch {
-                return []
-            }
+          const fromTutors = []
+          const tutor = this.tutors.find(
+            t => String(t.tutorId) === String(tutorId)
+          )
+          if (tutor && Array.isArray(tutor.unavailableDates)) {
+            fromTutors.push(
+              ...tutor.unavailableDates.filter(entry => entry && entry.date)
+            )
+          }
+
+          let fromStorage = []
+          try {
+            const saved = JSON.parse(
+              localStorage.getItem(`tutorUnavailableDates_${tutorId}`) || "[]"
+            )
+            fromStorage = Array.isArray(saved)
+              ? saved.filter(entry => entry && entry.date)
+              : []
+          } catch {
+            fromStorage = []
+          }
+
+          const seen = new Set()
+          const merged = []
+          for (const entry of [...fromTutors, ...fromStorage]) {
+            if (!entry || !entry.date || seen.has(entry.date)) continue
+            seen.add(entry.date)
+            merged.push(entry)
+          }
+          return merged
         },
 
         // the sessions the tutor already has booked on the backend
@@ -1308,6 +1390,11 @@ export default {
 .status-chip.unpaid {
   background: #fce8e6;
   color: #c0392b;
+}
+
+.status-chip.cancelled {
+  background: #efeaea;
+  color: #a12c1e;
 }
 
 /* EMPTY STATES */

@@ -1,14 +1,14 @@
 import Vue from 'vue'
 import VueRouter from 'vue-router'
 import { getSession } from '@/services/authService'
-import LoginView from '@/views/Auth/LoginView.vue'
-import RegisterView from '@/views/Auth/RegisterView.vue'
+import LoginView from '@/views/views/Auth/LoginView.vue'
+import RegisterView from '@/views/views/Auth/RegisterView.vue'
 
-import StudentManagement from '@/views/Student/StudentManagement.vue'
-import ChangePasswordView from '@/views/Auth/ChangePasswordView.vue'
-import ResetPasswordView from '@/views/Auth/ResetPasswordView.vue'
-import TutorManagement from '@/views/Tutor/TutorManagement.vue'
-import AdminDashboard from '@/views/Admin/AdminDashboard.vue'
+import StudentManagement from '@/views/views/Student/StudentManagement.vue'
+import ChangePasswordView from '@/views/views/Auth/ChangePasswordView.vue'
+import ResetPasswordView from '@/views/views/Auth/ResetPasswordView.vue'
+import TutorManagement from '@/views/views/Tutor/TutorManagement.vue'
+import AdminDashboard from '@/views/views/Admin/AdminDashboard.vue'
 
 Vue.use(VueRouter)
 

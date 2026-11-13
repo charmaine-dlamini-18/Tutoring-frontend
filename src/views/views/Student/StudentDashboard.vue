@@ -11,6 +11,31 @@
                         Here are your upcoming sessions.
                     </p>
                 </div>
+
+                <button
+                    type="button"
+                    class="refresh-button"
+                    :disabled="refreshing"
+                    @click="refreshDashboard"
+                >
+                    <svg
+                        class="refresh-icon"
+                        :class="{ spinning: refreshing }"
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                    >
+                        <polyline points="23 4 23 10 17 10"></polyline>
+                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                    </svg>
+                    {{ refreshing ? 'Refreshing...' : 'Refresh' }}
+                </button>
             </section>
 
             <!-- quick action buttons, pressing one swaps the view below to that section -->
@@ -568,6 +593,7 @@ export default {
     data() {
         return {
             activePanel: "",
+            refreshing: false,
             payTarget: null,
             paymentForm: { amount: 0, paymentMethod: "" },
             modalError: "",
@@ -658,6 +684,18 @@ export default {
     },
 
     methods: {
+        // asks the parent to reload the student, tutors and subjects
+        refreshDashboard() {
+            if (this.refreshing) return
+
+            this.refreshing = true
+            this.$emit("refresh")
+
+            window.setTimeout(() => {
+                this.refreshing = false
+            }, 900)
+        },
+
         changePage(page) {
             this.$emit("change-page", page)
         },
@@ -851,6 +889,50 @@ export default {
   position: relative;
   z-index: 1;
   min-width: 0;
+}
+
+.refresh-button {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  color: #ffffff;
+  border-radius: 999px;
+  padding: 11px 20px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.refresh-button:hover:not(:disabled) {
+  background-color: #f28c28;
+  border-color: #f28c28;
+  transform: translateY(-1px);
+}
+
+.refresh-button:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.refresh-icon {
+  flex-shrink: 0;
+}
+
+.refresh-icon.spinning {
+  animation: refresh-spin 0.8s linear infinite;
+}
+
+@keyframes refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .header-label {

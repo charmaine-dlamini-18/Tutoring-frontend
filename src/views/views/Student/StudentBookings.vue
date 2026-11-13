@@ -98,8 +98,10 @@
                                             muted: !cell.inMonth,
                                             available: cell.available,
                                             selected: cell.selected,
-                                            today: cell.today
+                                            today: cell.today,
+                                            unavailable: cell.unavailable
                                         }"
+                                        :title="cell.unavailable ? 'Tutor is not available on this day' : ''"
                                         :disabled="!cell.available"
                                         @click="selectDate(cell)"
                                     >
@@ -112,8 +114,14 @@
                                 </p>
 
                                 <p v-else class="calendar-legend">
-                                    <span class="legend-dot"></span>
-                                    Highlighted dates have open slots
+                                    <span class="legend-item">
+                                        <span class="legend-dot"></span>
+                                        Highlighted dates have open slots
+                                    </span>
+                                    <span class="legend-item">
+                                        <span class="legend-dot unavailable"></span>
+                                        Greyed dates are not available
+                                    </span>
                                 </p>
                             </div>
 
@@ -484,6 +492,9 @@ import { getSession } from '@/services/authService'
 import { createBooking, deleteBooking } from '@/services/bookingService'
 import { createPayment } from '@/services/paymentService'
 
+const STANDARD_START = "08:30"
+const STANDARD_END = "18:00"
+
 export default {
     name: "StudentBookings",
 
@@ -534,6 +545,7 @@ export default {
             cvv: "",
             calendarYear: new Date().getFullYear(),
             calendarMonthIndex: new Date().getMonth(),
+            availabilityVersion: 0,
             bookingForm: { tutorId: '', subjectCode: '', sessionType: '', duration: '', date: '', startTime: '' }
         }
     },
@@ -621,6 +633,7 @@ export default {
                     inMonth: d.getMonth() === this.calendarMonthIndex,
                     today: key === todayKey,
                     available: this.isDateAvailable(key),
+                    unavailable: this.isDateMarkedUnavailable(key),
                     selected: key === this.bookingForm.date
                 })
             }
@@ -700,7 +713,19 @@ export default {
         }
     },
 
+    mounted() {
+        window.addEventListener('tutor-availability-updated', this.refreshAvailability)
+    },
+
+    beforeDestroy() {
+        window.removeEventListener('tutor-availability-updated', this.refreshAvailability)
+    },
+
     methods: {
+        refreshAvailability() {
+            this.availabilityVersion += 1
+        },
+
         changePage(page) {
             this.$emit("change-page", page)
         },
@@ -750,11 +775,17 @@ export default {
         getTutorAvailability(tutorId) {
             if (!tutorId) return []
 
+            // reads the availability version so Vue recomputes when a tutor
+            // marks a day unavailable while this page is open
+            if (this.availabilityVersion < 0) return []
+
             try {
                 const saved = JSON.parse(
-                    localStorage.getItem(`tutorAvailability_${tutorId}`) || "[]"
+                    localStorage.getItem(`tutorUnavailableDates_${tutorId}`) || "[]"
                 )
-                return Array.isArray(saved) ? saved : []
+                return Array.isArray(saved)
+                    ? saved.filter(entry => entry && entry.date)
+                    : []
             } catch {
                 return []
             }
@@ -776,32 +807,31 @@ export default {
             return `${year}-${month}-${day}`
         },
 
-        // the tutor's working windows for one date. If no availability has
-        // ever been saved in this browser, fall back to a normal working day.
+        // true when the tutor explicitly marked that day as unavailable
+        isDateMarkedUnavailable(dateKey) {
+            const { tutorId } = this.bookingForm
+
+            if (!tutorId) return false
+
+            return this.getTutorAvailability(tutorId).some(
+                entry => String(entry.date).split("T")[0] === dateKey
+            )
+        },
+
+        // the tutor's working windows for one date. Tutors are available every
+        // weekday 08:30 - 18:00 unless they marked that specific day unavailable.
         getAvailabilityWindows(dateKey) {
             const { tutorId } = this.bookingForm
 
             if (!tutorId) return []
 
-            const dayNames = [
-                "Sunday", "Monday", "Tuesday", "Wednesday",
-                "Thursday", "Friday", "Saturday"
-            ]
-
             const selected = this.parseDateKey(dateKey)
-            const dayName = dayNames[selected.getDay()]
-            const tutorSlots = this.getTutorAvailability(tutorId)
+            const day = selected.getDay()
 
-            if (!tutorSlots.length) {
-                return [{ startTime: "08:00", endTime: "18:00" }]
-            }
+            if (day === 0 || day === 6) return []
+            if (this.isDateMarkedUnavailable(dateKey)) return []
 
-            return tutorSlots.filter(slot => {
-                if (slot.date) {
-                    return String(slot.date).split("T")[0] === dateKey
-                }
-                return String(slot.day) === dayName
-            })
+            return [{ startTime: STANDARD_START, endTime: STANDARD_END }]
         },
 
         // builds the free start times for a date, removing anything that is in
@@ -908,7 +938,7 @@ export default {
             this.bookingForm.date = cell.key
         },
 
-        // jumps the calendar to the first date the tutor has availability on
+        // jumps the calendar to the first weekday the tutor is not unavailable
         focusCalendarOnFirstAvailable() {
             const tutorId = this.bookingForm.tutorId
             if (!tutorId) return
@@ -916,19 +946,28 @@ export default {
             const today = new Date()
             today.setHours(0, 0, 0, 0)
 
-            let earliest = null
+            const unavailable = new Set(
+                this.getTutorAvailability(tutorId).map(
+                    entry => String(entry.date).split("T")[0]
+                )
+            )
 
-            for (const slot of this.getTutorAvailability(tutorId)) {
-                if (!slot.date) continue
+            let target = today
 
-                const date = this.parseDateKey(slot.date)
-                if (date.getTime() < today.getTime()) continue
-                if (!earliest || date.getTime() < earliest.getTime()) {
-                    earliest = date
-                }
+            for (let i = 0; i < 90; i++) {
+                const date = new Date(
+                    today.getFullYear(),
+                    today.getMonth(),
+                    today.getDate() + i
+                )
+
+                const day = date.getDay()
+                if (day === 0 || day === 6) continue
+                if (unavailable.has(this.dateKey(date))) continue
+
+                target = date
+                break
             }
-
-            const target = earliest || new Date()
 
             this.calendarYear = target.getFullYear()
             this.calendarMonthIndex = target.getMonth()
@@ -1823,6 +1862,18 @@ select:focus {
   opacity: 0.4;
 }
 
+.calendar-day.unavailable {
+  background: #e9edf2;
+  border-color: #d9dfe7;
+  color: #a3adba;
+  text-decoration: line-through;
+  cursor: not-allowed;
+}
+
+.calendar-day.unavailable:hover {
+  border-color: #d9dfe7;
+}
+
 .calendar-day.available {
   background: #eaf6f0;
   border-color: #c8e9d8;
@@ -1847,11 +1898,18 @@ select:focus {
 
 .calendar-legend {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 14px;
   margin: 10px 0 0;
   color: #8a94a3;
   font-size: 11px;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .legend-dot {
@@ -1859,6 +1917,10 @@ select:focus {
   height: 10px;
   border-radius: 50%;
   background: #42b983;
+}
+
+.legend-dot.unavailable {
+  background: #b9c2cd;
 }
 
 .slot-picker {

@@ -2,10 +2,36 @@
   <div class="dashboard-layout">
     <main class="dashboard-content">
       <section class="dashboard-header">
-        <h1>Welcome back, {{ fullName }}</h1>
-        <p class="header-description">
-          Manage your sessions and tutoring activity.
-        </p>
+        <div>
+          <h1>Welcome back, {{ fullName }}</h1>
+          <p class="header-description">
+            Manage your sessions and tutoring activity.
+          </p>
+        </div>
+
+        <button
+          class="refresh-button"
+          :disabled="refreshing"
+          @click="refreshDashboard"
+        >
+          <svg
+            class="refresh-icon"
+            :class="{ spinning: refreshing }"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+          </svg>
+          Refresh
+        </button>
       </section>
 
       <section class="summary-cards">
@@ -95,7 +121,8 @@ export default {
       todaysSessions: [],
       upcomingSessions: [],
       completedSessions: [],
-      cancelledSessions: []
+      cancelledSessions: [],
+      refreshing: false
     }
   },
 
@@ -121,21 +148,7 @@ export default {
 
     this.session = session
 
-    try {
-      const tutor = await getTutorById(session.id)
-
-      if (tutor && Object.keys(tutor).length) {
-        this.tutor = {
-          tutorId: tutor.tutorId || '',
-          firstName: tutor.firstName || '',
-          lastName: tutor.lastName || '',
-          email: tutor.email || ''
-        }
-      }
-    } catch (error) {
-      console.error('Could not load tutor details:', error)
-    }
-
+    await this.loadTutorDetails()
     await this.loadDashboardBookings()
   },
 
@@ -156,6 +169,38 @@ export default {
   methods: {
     changePage(page) {
       this.$emit('change-page', page)
+    },
+
+    async loadTutorDetails() {
+      if (!this.session || !this.session.id) return
+
+      try {
+        const tutor = await getTutorById(this.session.id)
+
+        if (tutor && Object.keys(tutor).length) {
+          this.tutor = {
+            tutorId: tutor.tutorId || '',
+            firstName: tutor.firstName || '',
+            lastName: tutor.lastName || '',
+            email: tutor.email || ''
+          }
+        }
+      } catch (error) {
+        console.error('Could not load tutor details:', error)
+      }
+    },
+
+    async refreshDashboard() {
+      if (!this.session) return
+
+      this.refreshing = true
+
+      try {
+        await this.loadTutorDetails()
+        await this.loadDashboardBookings()
+      } finally {
+        this.refreshing = false
+      }
     },
 
     getStoredSessions() {
@@ -281,6 +326,10 @@ export default {
   border-radius: 18px;
   margin-bottom: 22px;
   box-shadow: 0 14px 34px rgba(31, 45, 69, 0.22);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
 }
 
 .dashboard-header::after {
@@ -308,6 +357,48 @@ export default {
   color: #d7dde3;
   font-size: 15px;
   margin: 7px 0 0;
+}
+
+.refresh-button {
+  position: relative;
+  z-index: 1;
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 7px;
+  padding: 10px 16px;
+  font-family: inherit;
+  font-weight: bold;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.refresh-button:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.refresh-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.refresh-icon {
+  flex-shrink: 0;
+}
+
+.refresh-icon.spinning {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .summary-cards {
@@ -551,6 +642,8 @@ export default {
 
   .dashboard-header {
     padding: 24px;
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .dashboard-header h1 {

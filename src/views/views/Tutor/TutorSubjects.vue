@@ -10,12 +10,38 @@
         </p>
       </div>
 
-      <button
-        class="header-button"
-        @click="openAddForm"
-      >
-        + Add Subject Taught
-      </button>
+      <div class="header-actions">
+        <button
+          class="refresh-button"
+          :disabled="refreshing"
+          @click="refreshSubjects"
+        >
+          <svg
+            class="refresh-icon"
+            :class="{ spinning: refreshing }"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+          </svg>
+          Refresh
+        </button>
+
+        <button
+          class="header-button"
+          @click="openAddForm"
+        >
+          + Add Subject Taught
+        </button>
+      </div>
     </section>
 
 
@@ -242,6 +268,7 @@ export default {
 
       loading: false,
       saving: false,
+      refreshing: false,
 
       showForm: false,
       editing: false,
@@ -292,6 +319,16 @@ export default {
 
 
   methods: {
+
+    async refreshSubjects() {
+      this.refreshing = true
+
+      try {
+        await this.loadData()
+      } finally {
+        this.refreshing = false
+      }
+    },
 
     async loadData() {
       this.loading = true
@@ -523,6 +560,13 @@ export default {
   margin: 7px 0 0;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
 .header-button {
   background-color: #f28c28;
   color: #ffffff;
@@ -532,6 +576,50 @@ export default {
   font-family: inherit;
   font-weight: bold;
   cursor: pointer;
+  white-space: nowrap;
+}
+
+.header-button:hover {
+  background-color: #d9760f;
+}
+
+.refresh-button {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 7px;
+  padding: 10px 16px;
+  font-family: inherit;
+  font-weight: bold;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.refresh-button:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.refresh-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.refresh-icon {
+  flex-shrink: 0;
+}
+
+.refresh-icon.spinning {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .subject-summary {
@@ -811,6 +899,10 @@ export default {
     flex-direction: column;
     align-items: flex-start;
     gap: 20px;
+  }
+
+  .header-actions {
+    flex-wrap: wrap;
   }
 
   .summary-card {

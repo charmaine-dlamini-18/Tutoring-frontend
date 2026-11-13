@@ -6,121 +6,154 @@
         <p class="header-label">TUTOR MANAGEMENT</p>
         <h1>Availability</h1>
         <p class="header-description">
-          Set the dates and times you're available for tutoring sessions.
+          You are available every weekday (Monday to Friday) from 08:30 to 18:00.
+          Mark a specific day as unavailable if you cannot tutor.
         </p>
       </div>
 
-      <button
-        class="header-button"
-        @click="openAddForm"
-      >
-        + Add Availability
-      </button>
+      <div class="header-actions">
+        <button
+          class="refresh-button"
+          :disabled="refreshing"
+          @click="refreshAvailability"
+        >
+          <svg
+            class="refresh-icon"
+            :class="{ spinning: refreshing }"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+          </svg>
+          Refresh
+        </button>
+
+        <button
+          class="header-button"
+          @click="openAddForm"
+        >
+          + Mark Day Unavailable
+        </button>
+      </div>
     </section>
 
     <section class="availability-summary">
-
       <div class="summary-card">
-        <p class="summary-label">AVAILABLE SLOTS</p>
-        <h2>{{ availability.length }}</h2>
-        <p>Time slots currently available</p>
+        <p class="summary-label">STANDARD DAYS</p>
+        <h2>{{ standardDays.length }}</h2>
+        <p>Monday to Friday</p>
       </div>
 
+      <div class="summary-card">
+        <p class="summary-label">STANDARD HOURS</p>
+        <h2 class="hours-value">{{ standardStart }} – {{ standardEnd }}</h2>
+        <p>Default availability each weekday</p>
+      </div>
+
+      <div class="summary-card">
+        <p class="summary-label">UNAVAILABLE DAYS</p>
+        <h2>{{ unavailableDates.length }}</h2>
+        <p>Days marked as not available</p>
+      </div>
     </section>
 
     <section class="availability-card">
-
       <div class="card-header">
         <div>
-          <h2>Your Availability</h2>
-          <p>Manage the dates and times you're available</p>
+          <h2>Standard Weekly Schedule</h2>
+          <p>Your default availability for every weekday</p>
         </div>
       </div>
 
+      <div class="table-header">
+        <span>Day</span>
+        <span>Start Time</span>
+        <span>End Time</span>
+        <span>Status</span>
+      </div>
+
+      <div
+        v-for="day in standardDays"
+        :key="day"
+        class="availability-row"
+      >
+        <strong>{{ day }}</strong>
+        <span>{{ standardStart }}</span>
+        <span>{{ standardEnd }}</span>
+        <span class="status-pill available">Available</span>
+      </div>
+    </section>
+
+    <section class="availability-card">
+      <div class="card-header">
+        <div>
+          <h2>Unavailable Dates</h2>
+          <p>Days you have marked as not available</p>
+        </div>
+      </div>
 
       <div class="table-header">
         <span>Date</span>
         <span>Day</span>
-        <span>Start Time</span>
-        <span>End Time</span>
-        <span>Actions</span>
+        <span>Reason</span>
+        <span>Action</span>
       </div>
 
-
       <div
-        v-for="(slot, index) in availability"
-        :key="slot.id || `${slot.date || slot.day}-${slot.startTime}-${index}`"
+        v-for="entry in unavailableDates"
+        :key="entry.date"
         class="availability-row"
       >
-        <strong>{{ formatSlotDate(slot) }}</strong>
-
-        <span>{{ slotDayName(slot) }}</span>
-
-        <span>{{ slot.startTime }}</span>
-
-        <span>{{ slot.endTime }}</span>
-
+        <strong>{{ formatDate(entry.date) }}</strong>
+        <span>{{ dayName(entry.date) }}</span>
+        <span>{{ entry.reason || '—' }}</span>
         <div class="row-actions">
-
           <button
             class="edit-button"
-            @click="openEditForm(index)"
+            @click="makeAvailable(entry.date)"
           >
-            Edit
+            Make Available
           </button>
-
-          <button
-            class="remove-button"
-            @click="removeAvailability(index)"
-          >
-            Remove
-          </button>
-
         </div>
-
       </div>
+
       <div
-        v-if="availability.length === 0"
+        v-if="unavailableDates.length === 0"
         class="empty-state"
       >
-
-        <div class="empty-circle">
-          +
-        </div>
-
-        <h3>No availability set</h3>
-
+        <div class="empty-circle">✓</div>
+        <h3>No unavailable days</h3>
         <p>
-          Add the dates and times you're available to tutor.
+          You are available every weekday. Mark a day if you cannot tutor.
         </p>
-
         <button
           class="add-button"
           @click="openAddForm"
         >
-          Set Availability
+          Mark Day Unavailable
         </button>
-
       </div>
-
     </section>
 
     <div
       v-if="showForm"
       class="form-overlay"
     >
-
       <div class="availability-form">
-
         <div class="form-header">
-
           <div>
-            <h2>
-              {{ editing ? 'Edit Availability' : 'Add Availability' }}
-            </h2>
-
+            <h2>Mark Day Unavailable</h2>
             <p>
-              Choose the date and times you're available.
+              Choose the day you are not available. All other weekdays remain
+              08:30 – 18:00.
             </p>
           </div>
 
@@ -130,41 +163,27 @@
           >
             ×
           </button>
-
         </div>
+
         <div class="form-group">
-
           <label>Date</label>
-
           <input
             v-model="form.date"
             type="date"
             :min="todayDate"
           >
-
         </div>
 
         <div class="form-group">
-
-          <label>Start Time</label>
-
+          <label>Reason (optional)</label>
           <input
-            v-model="form.startTime"
-            type="time"
+            v-model="form.reason"
+            type="text"
+            maxlength="80"
+            placeholder="e.g. Personal appointment"
           >
-
         </div>
 
-        <div class="form-group">
-
-          <label>End Time</label>
-
-          <input
-            v-model="form.endTime"
-            type="time"
-          >
-
-        </div>
         <p
           v-if="errorMessage"
           class="error-message"
@@ -173,7 +192,6 @@
         </p>
 
         <div class="form-actions">
-
           <button
             class="cancel-button"
             @click="closeForm"
@@ -183,24 +201,24 @@
 
           <button
             class="save-button"
-            @click="saveAvailability"
+            @click="markUnavailable"
           >
-            {{ editing ? 'Save Changes' : 'Add Availability' }}
+            Mark Unavailable
           </button>
-
         </div>
-
       </div>
-
     </div>
 
   </main>
 </template>
 
 
-
 <script>
 import { getSession } from '@/services/authService'
+
+const STANDARD_START = '08:30'
+const STANDARD_END = '18:00'
+const STANDARD_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 
 export default {
   name: "TutorAvailability",
@@ -208,15 +226,13 @@ export default {
   data() {
     return {
       session: getSession(),
-      availability: [],
+      unavailableDates: [],
+      refreshing: false,
       showForm: false,
-      editing: false,
-      editingIndex: -1,
       errorMessage: "",
       form: {
         date: "",
-        startTime: "",
-        endTime: ""
+        reason: ""
       }
     }
   },
@@ -231,8 +247,20 @@ export default {
 
     storageKey() {
       return this.tutorId
-        ? `tutorAvailability_${this.tutorId}`
+        ? `tutorUnavailableDates_${this.tutorId}`
         : ""
+    },
+
+    standardDays() {
+      return STANDARD_DAYS
+    },
+
+    standardStart() {
+      return STANDARD_START
+    },
+
+    standardEnd() {
+      return STANDARD_END
     },
 
     todayDate() {
@@ -252,16 +280,35 @@ export default {
       if (!this.storageKey) {
         this.errorMessage =
           "Could not identify the logged-in tutor."
+        this.unavailableDates = []
         return
       }
 
       try {
-        this.availability = JSON.parse(
+        const saved = JSON.parse(
           localStorage.getItem(this.storageKey) || "[]"
         )
+
+        this.unavailableDates = Array.isArray(saved)
+          ? saved.filter(entry => entry && entry.date)
+          : []
       } catch {
-        this.availability = []
+        this.unavailableDates = []
       }
+
+      this.unavailableDates.sort((a, b) =>
+        a.date < b.date ? -1 : a.date > b.date ? 1 : 0
+      )
+    },
+
+    async refreshAvailability() {
+      this.refreshing = true
+      this.errorMessage = ""
+
+      await new Promise(resolve => setTimeout(resolve, 250))
+
+      this.loadAvailability()
+      this.refreshing = false
     },
 
     saveToStorage() {
@@ -273,7 +320,7 @@ export default {
 
       localStorage.setItem(
         this.storageKey,
-        JSON.stringify(this.availability)
+        JSON.stringify(this.unavailableDates)
       )
 
       window.dispatchEvent(
@@ -284,52 +331,22 @@ export default {
     },
 
     openAddForm() {
-      this.editing = false
-      this.editingIndex = -1
       this.errorMessage = ""
       this.form = {
         date: "",
-        startTime: "",
-        endTime: ""
-      }
-      this.showForm = true
-    },
-
-    openEditForm(index) {
-      const slot = this.availability[index]
-
-      if (!slot) return
-
-      this.editing = true
-      this.editingIndex = index
-      this.errorMessage = ""
-      this.form = {
-        date: slot.date || "",
-        startTime: slot.startTime,
-        endTime: slot.endTime
+        reason: ""
       }
       this.showForm = true
     },
 
     closeForm() {
       this.showForm = false
-      this.editingIndex = -1
       this.errorMessage = ""
     },
 
-    saveAvailability() {
-      if (
-        !this.form.date ||
-        !this.form.startTime ||
-        !this.form.endTime
-      ) {
-        this.errorMessage = "Please complete all fields."
-        return
-      }
-
-      if (this.form.startTime >= this.form.endTime) {
-        this.errorMessage =
-          "End time must be later than start time."
+    markUnavailable() {
+      if (!this.form.date) {
+        this.errorMessage = "Please choose a date."
         return
       }
 
@@ -339,44 +356,34 @@ export default {
         return
       }
 
-      const duplicateIndex = this.availability.findIndex(
-        (slot, index) =>
-          index !== this.editingIndex &&
-          slot.date === this.form.date &&
-          slot.startTime === this.form.startTime
+      const exists = this.unavailableDates.some(
+        entry => entry.date === this.form.date
       )
 
-      if (duplicateIndex !== -1) {
+      if (exists) {
         this.errorMessage =
-          "Availability for this date and start time already exists."
+          "This day is already marked as unavailable."
         return
       }
 
-      const slot = {
-        id: `slot-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      this.unavailableDates.push({
         date: this.form.date,
-        startTime: this.form.startTime,
-        endTime: this.form.endTime
-      }
-
-      if (this.editing && this.editingIndex !== -1) {
-        this.availability.splice(this.editingIndex, 1, slot)
-      } else {
-        this.availability.push(slot)
-      }
-
-      this.availability.sort((a, b) => {
-        if (a.date !== b.date) return a.date < b.date ? -1 : 1
-        return a.startTime < b.startTime ? -1 : 1
+        reason: this.form.reason.trim()
       })
+
+      this.unavailableDates.sort((a, b) =>
+        a.date < b.date ? -1 : a.date > b.date ? 1 : 0
+      )
 
       if (this.saveToStorage()) {
         this.closeForm()
       }
     },
 
-    removeAvailability(index) {
-      this.availability.splice(index, 1)
+    makeAvailable(date) {
+      this.unavailableDates = this.unavailableDates.filter(
+        entry => entry.date !== date
+      )
       this.saveToStorage()
     },
 
@@ -385,31 +392,22 @@ export default {
       return new Date(year, month - 1, day)
     },
 
-    formatSlotDate(slot) {
-      if (!slot.date) {
-        return `Every ${slot.day}`
-      }
-
-      return this.parseDate(slot.date).toLocaleDateString("en-ZA", {
+    formatDate(value) {
+      return this.parseDate(value).toLocaleDateString("en-ZA", {
         year: "numeric",
         month: "short",
         day: "numeric"
       })
     },
 
-    slotDayName(slot) {
-      if (!slot.date) {
-        return slot.day || "-"
-      }
-
-      return this.parseDate(slot.date).toLocaleDateString("en-ZA", {
+    dayName(value) {
+      return this.parseDate(value).toLocaleDateString("en-ZA", {
         weekday: "long"
       })
     }
   }
 }
 </script>
-
 
 
 <style scoped>
@@ -424,7 +422,6 @@ export default {
   text-align: left;
 }
 
-
 .availability-header {
   background-color: #2c3e50;
   color: #ffffff;
@@ -434,6 +431,7 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 20px;
 }
 
 .header-label {
@@ -453,6 +451,14 @@ export default {
   color: #d7dde3;
   font-size: 14px;
   margin: 7px 0 0;
+  max-width: 560px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .header-button {
@@ -464,14 +470,60 @@ export default {
   font-family: inherit;
   font-weight: bold;
   cursor: pointer;
+  white-space: nowrap;
+}
+
+.header-button:hover {
+  background-color: #d9760f;
+}
+
+.refresh-button {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 7px;
+  padding: 10px 16px;
+  font-family: inherit;
+  font-weight: bold;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.refresh-button:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.refresh-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.refresh-icon {
+  flex-shrink: 0;
+}
+
+.refresh-icon.spinning {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .availability-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
   margin-bottom: 22px;
 }
 
 .summary-card {
-  width: 240px;
   background-color: #ffffff;
   border: 1px solid #e5e7eb;
   border-top: 4px solid #f28c28;
@@ -492,18 +544,25 @@ export default {
   font-size: 32px;
 }
 
+.summary-card .hours-value {
+  font-size: 24px;
+}
+
 .summary-card p {
   margin: 0;
   color: #8a94a3;
   font-size: 13px;
 }
 
-
 .availability-card {
   background-color: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
   padding: 22px;
+}
+
+.availability-card + .availability-card {
+  margin-top: 22px;
 }
 
 .card-header {
@@ -526,11 +585,10 @@ export default {
 .availability-row {
   display: grid;
   grid-template-columns:
-    1.2fr
+    1.3fr
     1fr
-    1fr
-    1fr
-    1.3fr;
+    1.5fr
+    1.4fr;
   align-items: center;
 }
 
@@ -545,6 +603,21 @@ export default {
   padding: 15px 5px;
   border-top: 1px solid #e5e7eb;
   font-size: 13px;
+}
+
+.status-pill {
+  display: inline-block;
+  width: fit-content;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.status-pill.available {
+  color: #1e7a58;
+  background-color: #edfaf4;
+  border: 1px solid #bfe7d5;
 }
 
 .row-actions {
@@ -562,25 +635,11 @@ export default {
   font-size: 11px;
   font-weight: bold;
   cursor: pointer;
-}
-
-.remove-button {
-  background-color: #ffffff;
-  color: #8a94a3;
-  border: 1px solid #d9dee5;
-  border-radius: 6px;
-  padding: 7px 11px;
-  font-family: inherit;
-  font-size: 11px;
-  cursor: pointer;
+  white-space: nowrap;
 }
 
 .edit-button:hover {
   background-color: #fff7ef;
-}
-
-.remove-button:hover {
-  background-color: #f7f8fa;
 }
 
 .empty-state {
@@ -673,6 +732,7 @@ export default {
   margin: 4px 0 0;
   color: #8a94a3;
   font-size: 12px;
+  max-width: 320px;
 }
 
 .close-button {
@@ -695,8 +755,7 @@ export default {
   font-weight: bold;
 }
 
-.form-group input,
-.form-group select {
+.form-group input {
   border: 1px solid #d9dee5;
   border-radius: 7px;
   padding: 11px;
@@ -705,13 +764,8 @@ export default {
   outline: none;
 }
 
-.form-group input:focus,
-.form-group select:focus {
+.form-group input:focus {
   border-color: #f28c28;
-}
-
-.form-group select:disabled {
-  background-color: #f7f8fa;
 }
 
 .error-message {
@@ -737,22 +791,26 @@ export default {
   cursor: pointer;
 }
 
-@media (max-width: 700px) {
+@media (max-width: 900px) {
+  .availability-summary {
+    grid-template-columns: 1fr;
+  }
+}
 
+@media (max-width: 700px) {
   .availability-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 20px;
   }
 
-  .summary-card {
-    width: auto;
+  .header-actions {
+    flex-wrap: wrap;
   }
 
   .availability-form {
     width: 90%;
   }
-
 }
 
 </style>

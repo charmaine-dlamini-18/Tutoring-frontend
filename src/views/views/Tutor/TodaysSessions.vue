@@ -10,6 +10,30 @@
             View and manage all tutoring sessions scheduled for today.
           </p>
         </div>
+
+        <button
+          class="refresh-button"
+          :disabled="refreshing"
+          @click="refreshSessions"
+        >
+          <svg
+            class="refresh-icon"
+            :class="{ spinning: refreshing }"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+          </svg>
+          Refresh
+        </button>
       </section>
 
       <section class="session-summary">
@@ -84,7 +108,8 @@ export default {
   data() {
     return {
       todaysSessions: [],
-      students: []
+      students: [],
+      refreshing: false
     };
   },
 
@@ -124,6 +149,16 @@ export default {
         .toLowerCase()
         .trim()
         .replace(/[_-]/g, " ");
+    },
+
+    async refreshSessions() {
+      this.refreshing = true;
+
+      try {
+        await this.loadTodaysSessions();
+      } finally {
+        this.refreshing = false;
+      }
     },
 
     getStoredArray(key) {
@@ -256,6 +291,10 @@ export default {
   padding: 32px;
   border-radius: 12px;
   margin-bottom: 22px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
 }
 
 .header-label {
@@ -275,6 +314,46 @@ export default {
   color: #d7dde3;
   font-size: 14px;
   margin: 7px 0 0;
+}
+
+.refresh-button {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 7px;
+  padding: 10px 16px;
+  font-family: inherit;
+  font-weight: bold;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.refresh-button:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.refresh-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.refresh-icon {
+  flex-shrink: 0;
+}
+
+.refresh-icon.spinning {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .session-summary {
@@ -395,6 +474,13 @@ export default {
 @media (max-width: 900px) {
   .session-summary {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .sessions-header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 </style>

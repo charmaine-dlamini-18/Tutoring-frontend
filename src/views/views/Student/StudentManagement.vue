@@ -172,6 +172,7 @@
 <script>
 import { getSession, logout } from '@/services/authService'
 import { getStudentById } from '@/services/studentService'
+import { getAllBookings } from '@/services/bookingService'
 import { getAllTutors } from '@/services/tutorService'
 import { getAllSubjects } from '@/services/subjectService'
 import { request } from '@/services/http'
@@ -246,8 +247,19 @@ export default {
     await this.loadAll()
   },
 
+  mounted() {
+    window.addEventListener('focus', this.loadAll)
+  },
+
+  beforeUnmount() {
+    window.removeEventListener('focus', this.loadAll)
+  },
+
   // if profile gets clicked on the top navbar while already on this page
   watch: {
+    dashboardPanel(panel) {
+      if (panel === 'history') this.loadAll()
+    },
     $route(to) {
       if (to.name === 'profile') {
         this.changePage('profile')
@@ -260,8 +272,9 @@ export default {
     // if the student cant be found we log out to be safe
     async loadAll() {
       try {
-        const [me, tutors, subjects, tutorSubjects] = await Promise.all([
+        const [me, bookings, tutors, subjects, tutorSubjects] = await Promise.all([
           getStudentById(this.session.id),
+          getAllBookings().catch(() => []),
           getAllTutors(),
           getAllSubjects(),
           request('/tutoring/tutorsubject/getAll', { label: 'Tutor subject' }).catch(() => [])
@@ -273,7 +286,17 @@ export default {
           return
         }
 
-        this.me = me
+        const bookingsById = new Map()
+        for (const booking of [
+          ...(Array.isArray(me.bookings) ? me.bookings : []),
+          ...(Array.isArray(bookings) ? bookings : [])
+        ]) {
+          if (!booking || !booking.bookingId) continue
+          const key = String(booking.bookingId)
+          bookingsById.set(key, { ...bookingsById.get(key), ...booking })
+        }
+
+        this.me = { ...me, bookings: Array.from(bookingsById.values()) }
         this.tutors = tutors
         this.subjects = subjects
         this.tutorSubjects = tutorSubjects

@@ -43,14 +43,14 @@
 
         <div class="summary-card clickable-card" @click="changePage('upcoming')">
           <span class="summary-label">UPCOMING</span>
-          <h2>{{ upcomingStudentCount }}</h2>
-          <p>Upcoming Students</p>
+          <h2>{{ upcomingSessions.length }}</h2>
+          <p>Upcoming Sessions</p>
         </div>
 
         <div class="summary-card clickable-card" @click="changePage('completed')">
           <span class="summary-label">COMPLETED</span>
-          <h2>{{ completedStudentCount }}</h2>
-          <p>Completed Students</p>
+          <h2>{{ completedSessions.length }}</h2>
+          <p>Completed Sessions</p>
         </div>
 
         <div class="summary-card clickable-card" @click="changePage('cancelled')">
@@ -122,7 +122,8 @@ export default {
       upcomingSessions: [],
       completedSessions: [],
       cancelledSessions: [],
-      refreshing: false
+      refreshing: false,
+      bookingsRefreshInterval: null
     }
   },
 
@@ -130,22 +131,6 @@ export default {
     todayStudentCount() {
       return new Set(
         this.todaysSessions
-          .map(session => session.studentNumber)
-          .filter(Boolean)
-      ).size
-    },
-
-    upcomingStudentCount() {
-      return new Set(
-        this.upcomingSessions
-          .map(session => session.studentNumber)
-          .filter(Boolean)
-      ).size
-    },
-
-    completedStudentCount() {
-      return new Set(
-        this.completedSessions
           .map(session => session.studentNumber)
           .filter(Boolean)
       ).size
@@ -181,6 +166,12 @@ export default {
       'tutor-cancellations-updated',
       this.loadDashboardBookings
     )
+    window.addEventListener('focus', this.loadDashboardBookings)
+    document.addEventListener('visibilitychange', this.handleVisibilityChange)
+    this.bookingsRefreshInterval = window.setInterval(
+      this.loadDashboardBookings,
+      30000
+    )
   },
 
   beforeUnmount() {
@@ -188,9 +179,16 @@ export default {
       'tutor-cancellations-updated',
       this.loadDashboardBookings
     )
+    window.removeEventListener('focus', this.loadDashboardBookings)
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange)
+    window.clearInterval(this.bookingsRefreshInterval)
   },
 
   methods: {
+    handleVisibilityChange() {
+      if (!document.hidden) this.loadDashboardBookings()
+    },
+
     changePage(page) {
       this.$emit('change-page', page)
     },
@@ -266,6 +264,7 @@ export default {
 
         const activeBookings = allBookings.filter(booking =>
           !excludedIds.has(String(booking.bookingId)) &&
+          String(booking.status || '').trim().toUpperCase() !== 'CANCELLED' &&
           booking.payment &&
           String(booking.payment.status).trim().toUpperCase() === 'PAID'
         )

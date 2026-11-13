@@ -254,13 +254,6 @@
                                 >
                                     Pay Now
                                 </button>
-                                <button
-                                    type="button"
-                                    class="small-button danger-outline"
-                                    @click="cancelBooking(b)"
-                                >
-                                    Cancel
-                                </button>
                             </span>
                         </div>
 
@@ -515,7 +508,7 @@
 
 <script>
 import { getSession } from '@/services/authService'
-import { createBooking, deleteBooking } from '@/services/bookingService'
+import { createBooking } from '@/services/bookingService'
 import { createPayment } from '@/services/paymentService'
 import { getCancelledBookingsForStudent } from '@/services/cancelledBookingService'
 
@@ -587,7 +580,7 @@ export default {
         upcomingBookings() {
             const now = Date.now()
             return this.myBookings
-                .filter(b => new Date(b.date).getTime() >= now)
+                .filter(b => !b.deleted && String(b.status || '').trim().toUpperCase() !== 'CANCELLED' && new Date(b.date).getTime() >= now)
                 .sort((a, b) => new Date(a.date) - new Date(b.date))
         },
 
@@ -595,7 +588,7 @@ export default {
         pastBookings() {
             const now = Date.now()
             return this.myBookings
-                .filter(b => new Date(b.date).getTime() < now)
+                .filter(b => !b.deleted && String(b.status || '').trim().toUpperCase() !== 'CANCELLED' && new Date(b.date).getTime() < now)
                 .sort((a, b) => new Date(b.date) - new Date(a.date))
         },
 
@@ -604,10 +597,20 @@ export default {
         cancelledBookings() {
             void this.cancelledVersion
             const studentNumber = this.me.studentNumber || this.session?.id || ''
-            return getCancelledBookingsForStudent(studentNumber)
+            const records = [
+                ...getCancelledBookingsForStudent(studentNumber),
+                ...this.myBookings.filter(b => b.deleted || String(b.status || '').trim().toUpperCase() === 'CANCELLED')
+            ]
+            const byBookingId = new Map()
+            for (const booking of records) {
+                const key = String(booking.bookingId)
+                byBookingId.set(key, { ...byBookingId.get(key), ...booking })
+            }
+
+            return Array.from(byBookingId.values())
                 .sort((a, b) => {
-                    const da = a.cancelledAt ? new Date(a.cancelledAt).getTime() : 0
-                    const db = b.cancelledAt ? new Date(b.cancelledAt).getTime() : 0
+                    const da = new Date(a.cancelledAt || a.date || 0).getTime()
+                    const db = new Date(b.cancelledAt || b.date || 0).getTime()
                     return db - da
                 })
         },
@@ -1137,6 +1140,11 @@ export default {
                 const bookingId = `BK-${Date.now()}`
                 const created = await createBooking({
                     bookingId,
+                    studentNumber:
+                        this.me.studentNumber ||
+                        this.session?.studentNumber ||
+                        this.session?.id ||
+                        '',
                     subjectCode: this.bookingForm.subjectCode,
                     sessionType: this.bookingForm.sessionType,
                     duration: String(this.bookingForm.duration),
@@ -1178,20 +1186,6 @@ export default {
         closePay() {
             this.payTarget = null
             this.modalError = ""
-        },
-
-        // double checks with the student first, then cancels on the backend
-        async cancelBooking(booking) {
-            if (!window.confirm(`Cancel your ${this.subjectName(booking.subjectCode)} booking on ${this.formatDate(booking.date)}?`)) return
-
-            this.error = ""
-            try {
-                await deleteBooking(booking.bookingId)
-                this.$emit("refresh")
-                this.notify('success', 'Booking cancelled.')
-            } catch (e) {
-                this.error = e.message
-            }
         },
 
         // sends the payment through to the backend

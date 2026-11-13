@@ -147,7 +147,6 @@
 <script>
 import { getSession } from "@/services/authService";
 import { getTutorSessions } from "@/services/tutorService";
-import { request } from "@/services/http";
 import { saveCancelledBooking } from "@/services/cancelledBookingService";
 const CANCELLED_STORAGE_KEY = "tutorCancelledSessions";
 const DELETED_STORAGE_KEY = "tutorDeletedBookingIds";
@@ -158,7 +157,6 @@ export default {
   data() {
     return {
       upcomingSessions: [],
-      students: [],
       showCancelModal: false,
       selectedSession: null,
       refreshing: false
@@ -220,13 +218,7 @@ beforeUnmount() {
     getStudentNumber(session) {
       if (session.studentNumber) return session.studentNumber;
 
-      const byBooking = this.students.find(student =>
-        Array.isArray(student.bookings) &&
-        student.bookings.some(b => b && String(b.bookingId) === String(session.bookingId))
-      );
-      if (byBooking && byBooking.studentNumber) return byBooking.studentNumber;
-
-      return "Student not found";
+      return "Student number unavailable";
     },
 
     normalizeSessionType(type) {
@@ -243,16 +235,10 @@ async loadUpcomingSessions() {
 
     if (!session || session.role !== "tutor" || !session.id) {
       this.upcomingSessions = [];
-      this.students = [];
       return;
     }
 
-    const [bookings, students] = await Promise.all([
-      getTutorSessions(session.id),
-      request("/tutoring/student/getAll", { label: "Student" }).catch(() => [])
-    ]);
-
-    this.students = Array.isArray(students) ? students : [];
+    const bookings = await getTutorSessions(session.id);
 
     if (!Array.isArray(bookings)) {
       throw new Error("Tutor bookings could not be loaded");
@@ -271,23 +257,11 @@ async loadUpcomingSessions() {
 
     const now = new Date();
 
-    const studentNumberByBookingId = new Map();
-    const studentByNumber = new Map();
-    for (const student of this.students) {
-      if (student && student.studentNumber) {
-        studentByNumber.set(String(student.studentNumber), student);
-      }
-      for (const b of student.bookings || []) {
-        if (b && b.bookingId) {
-          studentNumberByBookingId.set(String(b.bookingId), student.studentNumber);
-        }
-      }
-    }
-
     this.upcomingSessions = bookings
       .filter(booking => {
         if (
           cancelledIds.has(String(booking.bookingId)) ||
+          String(booking.status || '').trim().toUpperCase() === 'CANCELLED' ||
           !booking.payment ||
           String(booking.payment.status).trim().toUpperCase() !== "PAID" ||
           !booking.date
@@ -306,15 +280,11 @@ async loadUpcomingSessions() {
         ...booking,
         studentNumber:
           booking.studentNumber ||
-          (booking.student && booking.student.studentNumber) ||
-          studentNumberByBookingId.get(String(booking.bookingId)) ||
-          (studentByNumber.get(String(booking.studentNumber)) && studentByNumber.get(String(booking.studentNumber)).studentNumber) ||
-          ""
+          (booking.student && booking.student.studentNumber) || ""
       }));
   } catch (error) {
     console.error("Failed to load upcoming sessions:", error);
     this.upcomingSessions = [];
-    this.students = [];
   }
 },
 

@@ -119,7 +119,7 @@ export async function getDashboard() {
   const paymentList = payments || []
   const paidIds = paidBookingIds(paymentList)
   const bookingList = enrichBookings(bookings, students, tutors)
-    .filter(b => isPaidBooking(b, paidIds))
+    .filter(b => !b.deleted && isPaidBooking(b, paidIds))
 
   const stats = {
     totalStudents: students.length,
@@ -199,7 +199,7 @@ export async function getBookingsWithPeople() {
   ])
   const paidIds = paidBookingIds(payments)
   return enrichBookings(bookings, students, tutors)
-    .filter(b => isPaidBooking(b, paidIds))
+    .filter(b => !b.deleted && isPaidBooking(b, paidIds))
 }
 
 export function getAllAdmins() {

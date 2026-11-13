@@ -263,7 +263,7 @@
                                 <span class="cell-strong">{{ fmtR(p.amount) }}</span>
                                 <span>{{ formatDate(p.paymentDate) }}</span>
                                 <span>{{ p.paymentMethod }}</span>
-                                <span :class="['status-chip', 'paid']">{{ p.status }}</span>
+                                <span :class="['status-chip', String(p.status || '').toUpperCase() === 'REFUNDED' ? 'refunded' : 'paid']">{{ p.status }}</span>
                                 <span>{{ subjectName(p._subjectCode) }} &mdash; {{ formatDate(p._bookingDate) }}</span>
                             </div>
 
@@ -312,8 +312,8 @@
                                 <span>{{ b.sessionType }}</span>
                                 <span>{{ b.duration }} min</span>
                                 <span class="cell-strong">{{ b.payment ? fmtR(b.payment.amount) : '&mdash;' }}</span>
-                                <span :class="['status-chip', b.payment ? 'paid' : 'unpaid']">
-                                    {{ b.payment ? 'Paid' : 'Unpaid' }}
+                                <span :class="['status-chip', bookingStatusClass(b)]">
+                                    {{ bookingStatus(b) }}
                                 </span>
                             </div>
 
@@ -637,7 +637,7 @@ export default {
         upcomingBookings() {
             const now = Date.now()
             return this.myBookings
-                .filter(b => new Date(b.date).getTime() >= now)
+                .filter(b => !b.deleted && String(b.status || '').trim().toUpperCase() !== 'CANCELLED' && new Date(b.date).getTime() >= now)
                 .sort((a, b) => new Date(a.date) - new Date(b.date))
         },
 
@@ -645,7 +645,7 @@ export default {
         pastBookings() {
             const now = Date.now()
             return this.myBookings
-                .filter(b => new Date(b.date).getTime() < now)
+                .filter(b => !b.deleted && String(b.status || '').trim().toUpperCase() !== 'CANCELLED' && new Date(b.date).getTime() < now)
                 .sort((a, b) => new Date(b.date) - new Date(a.date))
         },
 
@@ -669,7 +669,7 @@ export default {
         // bookings with no payment yet, soonest first
         unpaidBookings() {
             return this.myBookings
-                .filter(b => !b.payment)
+                .filter(b => !b.deleted && String(b.status || '').trim().toUpperCase() !== 'CANCELLED' && !b.payment)
                 .sort((a, b) => new Date(a.date) - new Date(b.date))
         },
 
@@ -679,11 +679,28 @@ export default {
 
         // adds up every payment made so far
         totalSpent() {
-            return this.myBookings.reduce((sum, b) => sum + Number(b.payment ? b.payment.amount : 0), 0)
+            return this.myBookings.reduce((sum, b) => {
+                const status = String(b.payment && b.payment.status || '').trim().toUpperCase()
+                return status === 'REFUNDED' ? sum : sum + Number(b.payment ? b.payment.amount : 0)
+            }, 0)
         }
     },
 
     methods: {
+        bookingStatus(booking) {
+            if (booking.deleted || String(booking.status || '').trim().toUpperCase() === 'CANCELLED') {
+                return 'Cancelled'
+            }
+            return booking.payment ? 'Paid' : 'Unpaid'
+        },
+
+        bookingStatusClass(booking) {
+            if (booking.deleted || String(booking.status || '').trim().toUpperCase() === 'CANCELLED') {
+                return 'cancelled'
+            }
+            return booking.payment ? 'paid' : 'unpaid'
+        },
+
         // asks the parent to reload the student, tutors and subjects
         refreshDashboard() {
             if (this.refreshing) return
@@ -1360,6 +1377,16 @@ export default {
 }
 
 .status-chip.unpaid {
+  background: #fce8e6;
+  color: #c0392b;
+}
+
+.status-chip.cancelled {
+  background: #fce8e6;
+  color: #c0392b;
+}
+
+.status-chip.refunded {
   background: #fce8e6;
   color: #c0392b;
 }

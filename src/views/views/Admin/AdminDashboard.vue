@@ -302,6 +302,7 @@
             <th>Subject Code</th>
             <th>Student</th>
             <th>Tutor</th>
+            <th>Status</th>
             <th></th>
           </tr>
         </thead>
@@ -314,13 +315,18 @@
             <td>{{ b.subjectCode }}</td>
             <td>{{ b.studentNumber || '—' }}</td>
             <td>{{ b.tutorId || '—' }}</td>
+            <td>{{ String(b.status || '').toUpperCase() === 'CANCELLED' ? 'Cancelled' : 'Scheduled' }}</td>
             <td class="row-actions">
               <button type="button" class="ghost small" @click="editBooking(b)">Edit</button>
-              <button type="button" class="danger small" @click="removeBooking(b.bookingId)">Delete</button>
+              <button
+                type="button"
+                class="danger small"
+                @click="deleteBooking(b.bookingId)"
+              >Delete</button>
             </td>
           </tr>
           <tr v-if="!bookings.length">
-            <td colspan="8" class="empty-state">No bookings yet.</td>
+            <td colspan="9" class="empty-state">No bookings yet.</td>
           </tr>
         </tbody>
       </table>
@@ -402,7 +408,6 @@ import {
   deleteSubject,
   getBookingsWithPeople,
   updateBooking,
-  deleteBooking,
   getPayments,
   deleteStudent,
   deleteTutor
@@ -482,7 +487,7 @@ export default {
       }
       this.subjects = subjectsRes || []
       this.payments = paymentsRes || []
-      this.bookings = bookingsRes || []
+      this.bookings = (bookingsRes || []).filter(booking => !booking.deleted)
       } catch (e) {
         this.error = e.message || 'Could not load dashboard data'
       } finally {
@@ -563,11 +568,41 @@ export default {
         { label: 'Date', key: 'date', type: 'date' }
       ], { ...b }, 'booking')
     },
-    async removeBooking(bookingId) {
+    async deleteBooking(bookingId) {
       if (!window.confirm(`Delete booking ${bookingId}?`)) return
+      await this.setBookingCancelled(bookingId, true)
+    },
+    async setBookingCancelled(bookingId, deleted) {
       try {
         const booking = this.bookings.find(b => String(b.bookingId) === String(bookingId))
-        await deleteBooking(bookingId)
+        if (!booking) return
+        await updateBooking({
+          bookingId,
+          subjectCode: booking.subjectCode,
+          sessionType: booking.sessionType,
+          duration: booking.duration,
+          date: booking.date,
+          status: 'CANCELLED',
+          deleted
+        })
+        if (
+          deleted &&
+          booking.payment &&
+          (
+            String(booking.payment.status || '').trim().toUpperCase() === 'PAID' ||
+            String(booking.payment.status || '').trim().toUpperCase().includes('COMPLETE')
+          )
+        ) {
+          this.payments = this.payments.map(payment =>
+            String(payment.paymentRef) === String(booking.payment.paymentRef)
+              ? { ...payment, status: 'REFUNDED' }
+              : payment
+          )
+          this.stats.totalRevenue = Math.max(
+            0,
+            Number(this.stats.totalRevenue || 0) - Number(booking.payment.amount || 0)
+          )
+        }
         if (booking) {
           saveCancelledBooking({
             bookingId: booking.bookingId,
@@ -612,9 +647,18 @@ export default {
           }
           window.dispatchEvent(new Event('tutor-cancellations-updated'))
         }
-        this.loadAll()
+        if (deleted) {
+          this.stats.totalBookings = Math.max(0, Number(this.stats.totalBookings || 0) - 1)
+          this.bookings = this.bookings.filter(b => String(b.bookingId) !== String(bookingId))
+        } else {
+          this.bookings = this.bookings.map(b =>
+            String(b.bookingId) === String(bookingId)
+              ? { ...b, status: 'CANCELLED' }
+              : b
+          )
+        }
       } catch (e) {
-        this.error = e.message || 'Could not delete booking'
+        this.error = e.message || 'Could not update booking'
       }
     },
 
@@ -676,7 +720,7 @@ export default {
       const s = String(status || '').toUpperCase()
       if (s.includes('PAID') || s.includes('COMPLETE')) return 'ok'
       if (s.includes('PEND')) return 'warn'
-      if (s.includes('FAIL') || s.includes('CANCEL')) return 'bad'
+      if (s.includes('FAIL') || s.includes('CANCEL') || s.includes('REFUND')) return 'bad'
       return ''
     }
   }

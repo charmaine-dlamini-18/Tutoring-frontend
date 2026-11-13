@@ -37,20 +37,20 @@
       <section class="summary-cards">
         <div class="summary-card clickable-card" @click="changePage('today')">
           <span class="summary-label">TODAY</span>
-          <h2>{{ todaysSessions.length }}</h2>
-          <p>Today's Sessions</p>
+          <h2>{{ todayStudentCount }}</h2>
+          <p>Today's Students</p>
         </div>
 
         <div class="summary-card clickable-card" @click="changePage('upcoming')">
           <span class="summary-label">UPCOMING</span>
-          <h2>{{ upcomingSessions.length }}</h2>
-          <p>Upcoming Sessions</p>
+          <h2>{{ upcomingStudentCount }}</h2>
+          <p>Upcoming Students</p>
         </div>
 
         <div class="summary-card clickable-card" @click="changePage('completed')">
           <span class="summary-label">COMPLETED</span>
-          <h2>{{ completedSessions.length }}</h2>
-          <p>Completed Sessions</p>
+          <h2>{{ completedStudentCount }}</h2>
+          <p>Completed Students</p>
         </div>
 
         <div class="summary-card clickable-card" @click="changePage('cancelled')">
@@ -127,6 +127,30 @@ export default {
   },
 
   computed: {
+    todayStudentCount() {
+      return new Set(
+        this.todaysSessions
+          .map(session => session.studentNumber)
+          .filter(Boolean)
+      ).size
+    },
+
+    upcomingStudentCount() {
+      return new Set(
+        this.upcomingSessions
+          .map(session => session.studentNumber)
+          .filter(Boolean)
+      ).size
+    },
+
+    completedStudentCount() {
+      return new Set(
+        this.completedSessions
+          .map(session => session.studentNumber)
+          .filter(Boolean)
+      ).size
+    },
+
     fullName() {
       const name =
         `${this.tutor.firstName} ${this.tutor.lastName}`.trim()

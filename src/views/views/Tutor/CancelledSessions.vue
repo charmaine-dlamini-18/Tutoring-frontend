@@ -140,8 +140,10 @@
 
 
 <script>
+import { getSession } from '@/services/authService'
 const CANCELLED_STORAGE_KEY = "tutorCancelledSessions";
 const DELETED_STORAGE_KEY = "tutorDeletedBookingIds";
+import { getCancelledBookingsForTutor } from '@/services/cancelledBookingService'
 
 export default {
   name: "CancelledSessions",
@@ -149,6 +151,7 @@ export default {
   data() {
     return {
       cancelledSessions: [],
+      session: null,
       showDeleteModal: false,
       selectedSession: null,
       refreshing: false
@@ -175,20 +178,30 @@ export default {
   },
 
   mounted() {
+    this.session = getSession();
     this.loadCancelledSessions();
     window.addEventListener(
       "tutor-cancellations-updated",
       this.loadCancelledSessions
     );
+    window.addEventListener(
+      "cancelled-bookings-updated",
+      this.loadCancelledSessions
+    );
   },
 
   activated() {
+    this.session = getSession();
     this.loadCancelledSessions();
   },
 
   beforeUnmount() {
     window.removeEventListener(
       "tutor-cancellations-updated",
+      this.loadCancelledSessions
+    );
+    window.removeEventListener(
+      "cancelled-bookings-updated",
       this.loadCancelledSessions
     );
   },
@@ -205,10 +218,41 @@ export default {
 
     loadCancelledSessions() {
       try {
-        const saved = localStorage.getItem(CANCELLED_STORAGE_KEY);
-        const sessions = saved ? JSON.parse(saved) : [];
+        const tutorId = this.session
+          ? this.session.tutorId || this.session.id || ''
+          : '';
 
-        this.cancelledSessions = Array.isArray(sessions) ? sessions : [];
+        const fromShared = getCancelledBookingsForTutor(tutorId);
+
+        const legacy = [];
+        try {
+          const saved = localStorage.getItem(CANCELLED_STORAGE_KEY);
+          const sessions = saved ? JSON.parse(saved) : [];
+          if (Array.isArray(sessions)) {
+            for (const s of sessions) {
+              if (!s.tutorId) s.tutorId = tutorId;
+              legacy.push(s);
+            }
+          }
+        } catch {
+          // ignore legacy parse errors
+        }
+
+        const seen = new Set();
+        const merged = [];
+        for (const s of [...fromShared, ...legacy]) {
+          if (!s || !s.bookingId || seen.has(String(s.bookingId))) continue;
+          seen.add(String(s.bookingId));
+          merged.push(s);
+        }
+
+        merged.sort((a, b) => {
+          const da = a.cancelledAt ? new Date(a.cancelledAt).getTime() : 0;
+          const db = b.cancelledAt ? new Date(b.cancelledAt).getTime() : 0;
+          return db - da;
+        });
+
+        this.cancelledSessions = merged;
       } catch (error) {
         console.error("Failed to load cancelled sessions:", error);
         this.cancelledSessions = [];

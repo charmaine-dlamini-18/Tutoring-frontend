@@ -215,6 +215,7 @@
 
 <script>
 import { getSession } from '@/services/authService'
+import { getTutorById, updateTutor } from '@/services/tutorService'
 
 const STANDARD_START = '08:30'
 const STANDARD_END = '18:00'
@@ -311,7 +312,7 @@ export default {
       this.refreshing = false
     },
 
-    saveToStorage() {
+    async saveToStorage() {
       if (!this.storageKey) {
         this.errorMessage =
           "Could not identify the logged-in tutor."
@@ -327,7 +328,27 @@ export default {
         new Event("tutor-availability-updated")
       )
 
+      // persist on the tutor record so students see the same unavailable dates
+      await this.persistToBackend()
+
       return true
+    },
+
+    async persistToBackend() {
+      const tutorId = this.tutorId
+      if (!tutorId) return
+
+      try {
+        const tutor = await getTutorById(tutorId)
+        if (!tutor) return
+
+        await updateTutor({
+          ...tutor,
+          unavailableDates: this.unavailableDates
+        })
+      } catch (error) {
+        console.error('Could not persist unavailable dates to backend:', error)
+      }
     },
 
     openAddForm() {
@@ -344,7 +365,7 @@ export default {
       this.errorMessage = ""
     },
 
-    markUnavailable() {
+    async markUnavailable() {
       if (!this.form.date) {
         this.errorMessage = "Please choose a date."
         return
@@ -375,7 +396,7 @@ export default {
         a.date < b.date ? -1 : a.date > b.date ? 1 : 0
       )
 
-      if (this.saveToStorage()) {
+      if (await this.saveToStorage()) {
         this.closeForm()
       }
     },

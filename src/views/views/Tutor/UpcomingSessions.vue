@@ -148,6 +148,7 @@
 import { getSession } from "@/services/authService";
 import { getTutorSessions } from "@/services/tutorService";
 import { request } from "@/services/http";
+import { saveCancelledBooking } from "@/services/cancelledBookingService";
 const CANCELLED_STORAGE_KEY = "tutorCancelledSessions";
 const DELETED_STORAGE_KEY = "tutorDeletedBookingIds";
 
@@ -217,18 +218,15 @@ beforeUnmount() {
     },
 
     getStudentNumber(session) {
-      const matchingStudent = this.students.find(student =>
+      if (session.studentNumber) return session.studentNumber;
+
+      const byBooking = this.students.find(student =>
         Array.isArray(student.bookings) &&
-        student.bookings.some(
-          booking => booking.bookingId === session.bookingId
-        )
+        student.bookings.some(b => b && String(b.bookingId) === String(session.bookingId))
       );
+      if (byBooking && byBooking.studentNumber) return byBooking.studentNumber;
 
-      if (matchingStudent) {
-        return matchingStudent.studentNumber;
-      }
-
-      return session.studentNumber || "Student not found";
+      return "Student not found";
     },
 
     normalizeSessionType(type) {
@@ -273,23 +271,46 @@ async loadUpcomingSessions() {
 
     const now = new Date();
 
-    this.upcomingSessions = bookings.filter(booking => {
-      if (
-        cancelledIds.has(String(booking.bookingId)) ||
-        !booking.payment ||
-        String(booking.payment.status).trim().toUpperCase() !== "PAID" ||
-        !booking.date
-      ) {
-        return false;
+    const studentNumberByBookingId = new Map();
+    const studentByNumber = new Map();
+    for (const student of this.students) {
+      if (student && student.studentNumber) {
+        studentByNumber.set(String(student.studentNumber), student);
       }
+      for (const b of student.bookings || []) {
+        if (b && b.bookingId) {
+          studentNumberByBookingId.set(String(b.bookingId), student.studentNumber);
+        }
+      }
+    }
 
-      const bookingDate = new Date(booking.date);
+    this.upcomingSessions = bookings
+      .filter(booking => {
+        if (
+          cancelledIds.has(String(booking.bookingId)) ||
+          !booking.payment ||
+          String(booking.payment.status).trim().toUpperCase() !== "PAID" ||
+          !booking.date
+        ) {
+          return false;
+        }
 
-      return (
-        !Number.isNaN(bookingDate.getTime()) &&
-        bookingDate > now
-      );
-    });
+        const bookingDate = new Date(booking.date);
+
+        return (
+          !Number.isNaN(bookingDate.getTime()) &&
+          bookingDate > now
+        );
+      })
+      .map(booking => ({
+        ...booking,
+        studentNumber:
+          booking.studentNumber ||
+          (booking.student && booking.student.studentNumber) ||
+          studentNumberByBookingId.get(String(booking.bookingId)) ||
+          (studentByNumber.get(String(booking.studentNumber)) && studentByNumber.get(String(booking.studentNumber)).studentNumber) ||
+          ""
+      }));
   } catch (error) {
     console.error("Failed to load upcoming sessions:", error);
     this.upcomingSessions = [];
@@ -323,14 +344,19 @@ async loadUpcomingSessions() {
         );
 
         if (!alreadyCancelled) {
+          const session = getSession();
+          const tutorId = session?.tutorId || session?.id || '';
           const cancelledBooking = {
             ...this.selectedSession,
             bookingId: this.selectedSession.bookingId,
+            tutorId,
             studentNumber: this.getStudentNumber(this.selectedSession),
             date: this.selectedSession.date,
             subjectCode: this.selectedSession.subjectCode,
             duration: this.selectedSession.duration,
             sessionType: this.selectedSession.sessionType,
+            status: 'CANCELLED',
+            cancelledBy: 'tutor',
             cancelledAt: new Date().toISOString()
           };
 
@@ -341,6 +367,7 @@ async loadUpcomingSessions() {
             JSON.stringify(cancelledSessions)
             
           );
+          saveCancelledBooking(cancelledBooking);
           window.dispatchEvent(new Event("tutor-cancellations-updated"));
         }
 
